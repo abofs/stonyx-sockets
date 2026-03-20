@@ -1,0 +1,51 @@
+name: Publish to NPM
+
+on:
+  repository_dispatch:
+    types: [cascade-publish]
+  workflow_dispatch:
+    inputs:
+      version-type:
+        description: 'Version type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      custom-version:
+        description: 'Custom version (optional, overrides version-type)'
+        required: false
+        type: string
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.event_name == 'repository_dispatch' && 'cascade-update' || format('publish-{0}', github.ref) }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  pull-requests: write
+
+jobs:
+  publish:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    uses: abofs/stonyx-workflows/.github/workflows/npm-publish.yml@main
+    with:
+      version-type: ${{ github.event.inputs.version-type }}
+      custom-version: ${{ github.event.inputs.custom-version }}
+      cascade-source: ${{ github.event.client_payload.source_package || '' }}
+    secrets: inherit
+
+  cascade:
+    needs: publish
+    uses: abofs/stonyx-workflows/.github/workflows/cascade.yml@main
+    with:
+      package-name: ${{ needs.publish.outputs.package-name }}
+      published-version: ${{ needs.publish.outputs.published-version }}
+    secrets: inherit

@@ -67,7 +67,7 @@ module('[Integration] Sockets', function (hooks) {
     assert.deepEqual(client._lastEchoResponse, { msg: 'test-message' }, 'Echo response received');
   });
 
-  test('Heartbeat handler returns true', async function (assert) {
+  test('Built-in heartbeat round-trip works', async function (assert) {
     const server = new SocketServer();
     await server.init();
 

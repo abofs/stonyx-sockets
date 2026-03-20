@@ -76,6 +76,13 @@ export default class SocketServer {
       }
 
       const { request, data } = parsed;
+
+      // Built-in heartbeat — no handler needed
+      if (request === 'heartBeat') {
+        if (client.__authenticated) client.send({ request: 'heartBeat', response: true });
+        return;
+      }
+
       const handler = this.handlers[request];
 
       if (!handler) {
