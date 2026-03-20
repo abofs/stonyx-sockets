@@ -76,8 +76,18 @@ export default class SocketClient {
 
       const { request, response, sessionKey } = parsed;
 
-      if (request === 'auth' && sessionKey && this.encryptionEnabled) {
-        this.sessionKey = Buffer.from(sessionKey, 'base64');
+      // Built-in auth session key handling + heartbeat kickoff
+      if (request === 'auth') {
+        if (sessionKey && this.encryptionEnabled) {
+          this.sessionKey = Buffer.from(sessionKey, 'base64');
+        }
+        this.nextHeartBeat();
+      }
+
+      // Built-in heartbeat — schedule next beat on response
+      if (request === 'heartBeat') {
+        this.nextHeartBeat();
+        return;
       }
 
       const handler = this.handlers[request];
