@@ -1,0 +1,50 @@
+{
+  "name": "@stonyx/sockets",
+  "keywords": [
+    "stonyx-async",
+    "stonyx-module"
+  ],
+  "version": "0.1.0-beta.1",
+  "description": "WebSocket server and client module for the Stonyx framework",
+  "main": "src/main.js",
+  "type": "module",
+  "files": [
+    "*"
+  ],
+  "exports": {
+    ".": "./src/main.js",
+    "./server": "./src/server.js",
+    "./client": "./src/client.js",
+    "./handler": "./src/handler.js"
+  },
+  "scripts": {
+    "test": "stonyx test",
+    "prepublishOnly": "npm test"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abofs/stonyx-sockets.git"
+  },
+  "author": "Stone Costa",
+  "license": "Apache-2.0",
+  "contributors": [
+    "Stone Costa <stone.costa@synamicd.com>"
+  ],
+  "bugs": {
+    "url": "https://github.com/abofs/stonyx-sockets/issues"
+  },
+  "homepage": "https://github.com/abofs/stonyx-sockets#readme",
+  "dependencies": {
+    "stonyx": "0.2.3-beta.6",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@stonyx/utils": "0.2.3-beta.5",
+    "qunit": "^2.24.1",
+    "sinon": "^21.0.0"
+  }
+}
