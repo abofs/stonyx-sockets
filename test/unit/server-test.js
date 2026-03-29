@@ -62,6 +62,20 @@ module('[Unit] SocketServer', function (hooks) {
     server.reset();
   });
 
+  test('handleDisconnect calls onClientDisconnect hook', function (assert) {
+    const server = new SocketServer();
+    const spy = sinon.spy();
+    server.onClientDisconnect = spy;
+    const client = { id: 5, ip: '127.0.0.1' };
+    server.clientMap.set(5, client);
+
+    server.handleDisconnect(client);
+
+    assert.true(spy.calledOnce);
+    assert.strictEqual(spy.firstCall.args[0], client);
+    server.reset();
+  });
+
   test('broadcast sends to all authenticated clients', function (assert) {
     const server = new SocketServer();
     const sent = [];
@@ -77,8 +91,8 @@ module('[Unit] SocketServer', function (hooks) {
     server.broadcast('test', { data: 'hello' });
 
     assert.strictEqual(sent.length, 2);
-    assert.deepEqual(sent[0].msg, { request: 'test', data: { data: 'hello' } });
-    assert.deepEqual(sent[1].msg, { request: 'test', data: { data: 'hello' } });
+    assert.deepEqual(sent[0].msg, { request: 'test', response: { data: 'hello' } });
+    assert.deepEqual(sent[1].msg, { request: 'test', response: { data: 'hello' } });
 
     server.reset();
   });
@@ -92,7 +106,7 @@ module('[Unit] SocketServer', function (hooks) {
 
     server.sendTo(42, 'update', { score: 100 });
 
-    assert.deepEqual(received, { request: 'update', data: { score: 100 } });
+    assert.deepEqual(received, { request: 'update', response: { score: 100 } });
 
     server.reset();
   });
@@ -101,6 +115,70 @@ module('[Unit] SocketServer', function (hooks) {
     const server = new SocketServer();
     server.sendTo(999, 'update', {});
     assert.ok(true, 'No error thrown');
+    server.reset();
+  });
+
+  test('sendToByMeta sends to client matching meta key/value', function (assert) {
+    const server = new SocketServer();
+    let received = null;
+
+    const client = {
+      __authenticated: true,
+      meta: { agent: 'Trix' },
+      send: msg => { received = msg; },
+    };
+    server.clientMap.set(1, client);
+
+    const result = server.sendToByMeta('agent', 'Trix', 'dispatch', { text: 'hello' });
+
+    assert.true(result);
+    assert.deepEqual(received, { request: 'dispatch', response: { text: 'hello' } });
+    server.reset();
+  });
+
+  test('sendToByMeta returns false when no match', function (assert) {
+    const server = new SocketServer();
+
+    const client = {
+      __authenticated: true,
+      meta: { agent: 'Bee' },
+      send: sinon.stub(),
+    };
+    server.clientMap.set(1, client);
+
+    const result = server.sendToByMeta('agent', 'Trix', 'dispatch', {});
+
+    assert.false(result);
+    assert.false(client.send.called);
+    server.reset();
+  });
+
+  test('sendToByMeta skips unauthenticated clients', function (assert) {
+    const server = new SocketServer();
+
+    const client = {
+      __authenticated: false,
+      meta: { agent: 'Trix' },
+      send: sinon.stub(),
+    };
+    server.clientMap.set(1, client);
+
+    const result = server.sendToByMeta('agent', 'Trix', 'dispatch', {});
+
+    assert.false(result);
+    assert.false(client.send.called);
+    server.reset();
+  });
+
+  test('sendToByMeta handles clients without meta', function (assert) {
+    const server = new SocketServer();
+
+    const client = { __authenticated: true, send: sinon.stub() };
+    server.clientMap.set(1, client);
+
+    const result = server.sendToByMeta('agent', 'Trix', 'dispatch', {});
+
+    assert.false(result);
     server.reset();
   });
 });

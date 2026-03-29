@@ -101,4 +101,75 @@ module('[Integration] Sockets', function (hooks) {
 
     assert.ok(server.clientMap.size >= 2, 'Both clients registered');
   });
+
+  test('Server-initiated message uses response field', async function (assert) {
+    const server = new SocketServer();
+    await server.init();
+
+    const client = new SocketClient();
+    await client.init();
+
+    const [clientId] = server.clientMap.keys();
+    const targetClient = server.clientMap.get(clientId);
+    targetClient.meta = { userId: 'user-1' };
+
+    server.sendToByMeta('userId', 'user-1', 'echo', { msg: 'server-pushed' });
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    assert.deepEqual(
+      client._lastEchoResponse,
+      { msg: 'server-pushed' },
+      'Client handler received server-initiated message via response field'
+    );
+  });
+
+  test('sendTo delivers message to authenticated client', async function (assert) {
+    const server = new SocketServer();
+    await server.init();
+
+    const client = new SocketClient();
+    await client.init();
+
+    const [clientId] = server.clientMap.keys();
+
+    server.sendTo(clientId, 'echo', { msg: 'targeted' });
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    assert.deepEqual(
+      client._lastEchoResponse,
+      { msg: 'targeted' },
+      'sendTo delivered message to the correct authenticated client'
+    );
+  });
+
+  test('broadcast delivers to all authenticated clients via handler', async function (assert) {
+    const server = new SocketServer();
+    await server.init();
+
+    const client1 = new SocketClient();
+    await client1.init();
+
+    SocketClient.instance = null;
+    const client2 = new SocketClient();
+    await client2.init();
+
+    extraClients.push(client1);
+
+    server.broadcast('echo', { msg: 'broadcast-all' });
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    assert.deepEqual(
+      client1._lastEchoResponse,
+      { msg: 'broadcast-all' },
+      'First client received broadcast via echo handler'
+    );
+    assert.deepEqual(
+      client2._lastEchoResponse,
+      { msg: 'broadcast-all' },
+      'Second client received broadcast via echo handler'
+    );
+  });
 });

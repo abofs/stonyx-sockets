@@ -63,7 +63,7 @@ export default class SocketServer {
     }
   }
 
-  onMessage(payload, client) {
+  async onMessage(payload, client) {
     try {
       let parsed;
 
@@ -96,7 +96,7 @@ export default class SocketServer {
         return;
       }
 
-      const response = handler.server(data, client);
+      const response = await handler.server(data, client);
       if (response === undefined || response === null) return;
 
       if (request === 'auth' && response) {
@@ -139,18 +139,29 @@ export default class SocketServer {
     const { ip } = client;
     log.socket(`[${ip}] Client disconnected`);
     this.clientMap.delete(client.id);
+    this.onClientDisconnect?.(client);
   }
 
-  sendTo(clientId, request, data) {
+  sendTo(clientId, request, response) {
     const client = this.clientMap.get(clientId);
     if (!client) return;
-    client.send({ request, data });
+    client.send({ request, response });
   }
 
-  broadcast(request, data) {
+  sendToByMeta(key, value, request, response) {
+    for (const [, client] of this.clientMap) {
+      if (client.meta?.[key] === value && client.__authenticated) {
+        client.send({ request, response });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  broadcast(request, response) {
     for (const [, client] of this.clientMap) {
       if (client.__authenticated) {
-        client.send({ request, data });
+        client.send({ request, response });
       }
     }
   }
