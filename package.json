@@ -4,12 +4,15 @@
     "stonyx-async",
     "stonyx-module"
   ],
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0",
   "description": "WebSocket server and client module for the Stonyx framework",
   "main": "src/main.js",
   "type": "module",
   "files": [
-    "*"
+    "src",
+    "config",
+    "LICENSE.md",
+    "README.md"
   ],
   "exports": {
     ".": "./src/main.js",
@@ -22,7 +25,8 @@
     "prepublishOnly": "npm test"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "repository": {
     "type": "git",
