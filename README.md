@@ -1,3 +1,7 @@
+[![CI](https://github.com/abofs/stonyx-sockets/actions/workflows/ci.yml/badge.svg)](https://github.com/abofs/stonyx-sockets/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@stonyx/sockets.svg)](https://www.npmjs.com/package/@stonyx/sockets)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 # @stonyx/sockets
 
 WebSocket server and client module for the [Stonyx framework](https://github.com/abofs/stonyx), providing plug-and-play handler discovery, built-in authentication enforcement, AES-256-GCM encryption, and automatic heartbeat keep-alive.
