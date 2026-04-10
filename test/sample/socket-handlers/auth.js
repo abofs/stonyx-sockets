@@ -1,4 +1,4 @@
-import Handler from '../../../src/handler.js';
+import Handler from '@stonyx/sockets/handler';
 import config from 'stonyx/config';
 
 export default class AuthHandler extends Handler {

@@ -5,25 +5,58 @@ import { forEachFileImport } from '@stonyx/utils/file';
 import { sleep } from '@stonyx/utils/promise';
 import { encrypt, decrypt, deriveKey } from './encryption.js';
 
+interface SocketsConfig {
+  address: string;
+  authKey: string;
+  authData?: Record<string, unknown>;
+  encryption: string | boolean;
+  handlerDir: string;
+  heartBeatInterval: number;
+  reconnectBaseDelay?: number;
+  reconnectMaxDelay?: number;
+  maxReconnectAttempts?: number;
+}
+
+interface SocketMessage {
+  request: string;
+  data?: unknown;
+  response?: unknown;
+  sessionKey?: string;
+}
+
+interface HandlerInstance {
+  _clientRef?: SocketClient;
+  client: (response: unknown) => void;
+  [key: string]: unknown;
+}
+
 export default class SocketClient {
-  handlers = {};
+  static instance: SocketClient | null;
+
+  handlers: Record<string, HandlerInstance> = {};
   reconnectCount = 0;
   _intentionalClose = false;
+  socket: WebSocket | null = null;
+  sessionKey: Buffer | null = null;
+  globalKey: Buffer | null = null;
+  encryptionEnabled = false;
+  _heartBeatTimer: ReturnType<typeof setTimeout> | null = null;
+  promise: { resolve: () => void; reject: (reason?: unknown) => void } | null = null;
 
-  onDisconnect = null;
-  onReconnecting = null;
-  onReconnected = null;
-  onReconnectFailed = null;
+  onDisconnect: (() => void) | null = null;
+  onReconnecting: ((attempt: number, delay: number) => void) | null = null;
+  onReconnected: (() => void) | null = null;
+  onReconnectFailed: (() => void) | null = null;
 
   constructor() {
     if (SocketClient.instance) return SocketClient.instance;
     SocketClient.instance = this;
   }
 
-  async init() {
+  async init(): Promise<void> {
     await this.discoverHandlers();
 
-    const { encryption, authKey } = config.sockets;
+    const { encryption, authKey } = (config as unknown as Record<string, SocketsConfig>).sockets;
     this.encryptionEnabled = encryption === 'true' || encryption === true;
 
     if (this.encryptionEnabled) {
@@ -33,10 +66,11 @@ export default class SocketClient {
     return this.connect();
   }
 
-  async discoverHandlers() {
-    const { handlerDir } = config.sockets;
+  async discoverHandlers(): Promise<void> {
+    const { handlerDir } = (config as unknown as Record<string, SocketsConfig>).sockets;
 
-    await forEachFileImport(handlerDir, (HandlerClass, { name }) => {
+    await forEachFileImport(handlerDir, (HandlerClassUntyped: unknown, { name }) => {
+      const HandlerClass = HandlerClassUntyped as new () => HandlerInstance;
       const instance = new HandlerClass();
 
       if (typeof instance.client === 'function') {
@@ -46,41 +80,41 @@ export default class SocketClient {
     }, { ignoreAccessFailure: true });
   }
 
-  async connect() {
-    return new Promise((resolve, reject) => {
-      const { address, authKey, authData } = config.sockets;
+  async connect(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const { address, authKey, authData } = (config as unknown as Record<string, SocketsConfig>).sockets;
       this.promise = { resolve, reject };
 
       log.socket(`Connecting to remote server: ${address}`);
       const socket = new WebSocket(address);
       this.socket = socket;
 
-      socket.onmessage = this.onMessage.bind(this);
-      socket.onclose = this.onClose.bind(this);
-      socket.onerror = event => {
+      socket.on('message', (data: Buffer) => this.onMessage(data));
+      socket.on('close', () => this.onClose());
+      socket.on('error', () => {
         log.socket(`Error connecting to socket server`);
         reject('Error connecting to socket server');
-      };
+      });
 
-      socket.onopen = () => {
+      socket.on('open', () => {
         this._intentionalClose = false;
         this.reconnectCount = 0;
         this.send({ request: 'auth', data: { authKey, ...authData } }, true);
-      };
+      });
     });
   }
 
-  onMessage({ data: payload }) {
+  onMessage(payload: Buffer | string): void {
     try {
-      let parsed;
+      let parsed: SocketMessage;
 
       if (this.encryptionEnabled) {
-        const key = this.sessionKey || this.globalKey;
-        const raw = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
-        parsed = JSON.parse(decrypt(raw, key));
+        const key = this.sessionKey || this.globalKey!;
+        const raw = Buffer.isBuffer(payload) ? payload : Buffer.from(payload as string);
+        parsed = JSON.parse(decrypt(raw, key)) as SocketMessage;
       } else {
         const raw = Buffer.isBuffer(payload) ? payload.toString() : payload;
-        parsed = JSON.parse(raw);
+        parsed = JSON.parse(raw as string) as SocketMessage;
       }
 
       const { request, response, sessionKey } = parsed;
@@ -104,31 +138,32 @@ export default class SocketClient {
         return;
       }
 
-      handler.client.call({ client: this, ...handler }, response);
-    } catch (error) {
+      handler.client.call({ ...(handler as Record<string, unknown>), client: this }, response);
+    } catch {
       log.socket(`Invalid payload received from remote server`);
     }
   }
 
-  send(payload, useGlobalKey = false) {
+  send(payload: SocketMessage, useGlobalKey = false): void {
     if (this.encryptionEnabled) {
-      const key = useGlobalKey ? this.globalKey : this.sessionKey;
+      const key = useGlobalKey ? this.globalKey! : this.sessionKey!;
       const data = encrypt(JSON.stringify(payload), key);
-      this.socket.send(data);
+      this.socket!.send(data);
     } else {
-      this.socket.send(JSON.stringify(payload));
+      this.socket!.send(JSON.stringify(payload));
     }
   }
 
-  heartBeat() {
+  heartBeat(): void {
     this.send({ request: 'heartBeat' });
   }
 
-  nextHeartBeat() {
-    this._heartBeatTimer = setTimeout(() => this.heartBeat(), config.sockets.heartBeatInterval);
+  nextHeartBeat(): void {
+    const { heartBeatInterval } = (config as unknown as Record<string, SocketsConfig>).sockets;
+    this._heartBeatTimer = setTimeout(() => this.heartBeat(), heartBeatInterval);
   }
 
-  onClose() {
+  onClose(): void {
     log.socket('Disconnected from remote server');
     if (this._heartBeatTimer) clearTimeout(this._heartBeatTimer);
 
@@ -139,17 +174,17 @@ export default class SocketClient {
     }
   }
 
-  close() {
+  close(): void {
     this._intentionalClose = true;
     if (this._heartBeatTimer) clearTimeout(this._heartBeatTimer);
     if (this.socket) this.socket.close();
   }
 
-  getReconnectDelay() {
+  getReconnectDelay(): number {
     const {
       reconnectBaseDelay = 1000,
       reconnectMaxDelay = 60000,
-    } = config.sockets;
+    } = (config as unknown as Record<string, SocketsConfig>).sockets;
 
     const exponential = reconnectBaseDelay * Math.pow(2, this.reconnectCount - 1);
     const capped = Math.min(exponential, reconnectMaxDelay);
@@ -157,8 +192,8 @@ export default class SocketClient {
     return capped + jitter;
   }
 
-  async reconnect() {
-    const { maxReconnectAttempts = Infinity } = config.sockets;
+  async reconnect(): Promise<void> {
+    const { maxReconnectAttempts = Infinity } = (config as unknown as Record<string, SocketsConfig>).sockets;
 
     this.reconnectCount++;
 
@@ -182,7 +217,7 @@ export default class SocketClient {
     }
   }
 
-  reset() {
+  reset(): void {
     this.close();
     this.handlers = {};
     this.sessionKey = null;

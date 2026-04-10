@@ -1,4 +1,4 @@
-import Handler from '../../../src/handler.js';
+import Handler from '@stonyx/sockets/handler';
 
 export default class EchoHandler extends Handler {
   server(data) {
