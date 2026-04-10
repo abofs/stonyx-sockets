@@ -6,22 +6,37 @@
   ],
   "version": "0.1.1-beta.11",
   "description": "WebSocket server and client module for the Stonyx framework",
-  "main": "src/main.js",
+  "main": "dist/main.js",
+  "types": "dist/main.d.ts",
   "type": "module",
   "files": [
-    "src",
+    "dist",
     "config",
     "LICENSE.md",
     "README.md"
   ],
   "exports": {
-    ".": "./src/main.js",
-    "./server": "./src/server.js",
-    "./client": "./src/client.js",
-    "./handler": "./src/handler.js"
+    ".": {
+      "types": "./dist/main.d.ts",
+      "default": "./dist/main.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./handler": {
+      "types": "./dist/handler.d.ts",
+      "default": "./dist/handler.js"
+    }
   },
   "scripts": {
-    "test": "stonyx test",
+    "build": "tsc",
+    "build:test": "tsc -p tsconfig.test.json",
+    "test": "pnpm build && pnpm build:test && stonyx test 'dist-test/test/**/*-test.js'",
     "prepublishOnly": "npm test"
   },
   "publishConfig": {
@@ -47,7 +62,10 @@
   },
   "devDependencies": {
     "@stonyx/utils": "0.2.3-beta.7",
+    "@types/node": "^25.5.2",
+    "@types/ws": "^8.18.1",
     "qunit": "^2.24.1",
-    "sinon": "^21.0.0"
+    "sinon": "^21.0.0",
+    "typescript": "^5.8.3"
   }
 }

@@ -1,1 +1,12 @@
 node_modules/
+
+# build output
+dist/
+dist-test/
+
+# os / IDE
+.vscode/*
+*DS_Store*
+
+# npm auth (never commit tokens)
+.npmrc
