@@ -89,6 +89,34 @@ module('[Unit] SocketClient', function (hooks) {
     client.reset();
   });
 
+  test('onClose passes close code and reason to onDisconnect', function (assert) {
+    const client = new SocketClient();
+    const spy = sinon.spy();
+    client.onDisconnect = spy;
+    client._intentionalClose = true;
+
+    client.onClose(1001, 'server restart');
+
+    assert.true(spy.calledOnce);
+    assert.strictEqual(spy.firstCall.args[0], 1001, 'code passed to onDisconnect');
+    assert.strictEqual(spy.firstCall.args[1], 'server restart', 'reason passed to onDisconnect');
+    client.reset();
+  });
+
+  test('onClose defaults code to 1006 and reason to empty string when not provided', function (assert) {
+    const client = new SocketClient();
+    const spy = sinon.spy();
+    client.onDisconnect = spy;
+    client._intentionalClose = true;
+
+    client.onClose();
+
+    assert.true(spy.calledOnce);
+    assert.strictEqual(spy.firstCall.args[0], 1006, 'code defaults to 1006');
+    assert.strictEqual(spy.firstCall.args[1], '', 'reason defaults to empty string');
+    client.reset();
+  });
+
   test('onClose does not auto-reconnect when _intentionalClose is true', function (assert) {
     const client = new SocketClient();
     client._intentionalClose = true;
