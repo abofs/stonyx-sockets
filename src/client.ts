@@ -81,6 +81,7 @@ export default class SocketClient {
   }
 
   async connect(): Promise<void> {
+    this.sessionKey = null;
     return new Promise<void>((resolve, reject) => {
       const { address, authKey, authData } = (config as unknown as Record<string, SocketsConfig>).sockets;
       this.promise = { resolve, reject };
