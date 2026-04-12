@@ -2,6 +2,7 @@ import QUnit from 'qunit';
 import sinon from 'sinon';
 import config from 'stonyx/config';
 import SocketClient from '../../src/client.js';
+import { encrypt, generateSessionKey, deriveKey } from '../../src/encryption.js';
 
 const { module, test } = QUnit;
 
@@ -158,6 +159,75 @@ module('[Unit] SocketClient', function (hooks) {
     await client.reconnect();
 
     assert.true(spy.calledOnce);
+    client.reset();
+  });
+
+  test('connect() clears stale sessionKey (regression: #12)', function (assert) {
+    const client = new SocketClient();
+    const staleKey = generateSessionKey();
+    client.sessionKey = staleKey;
+
+    // connect() clears sessionKey synchronously before creating the WebSocket
+    client.connect().catch(() => {}); // Rejects — no real server
+
+    assert.strictEqual(client.sessionKey, null, 'sessionKey is null after connect() starts');
+    assert.ok(staleKey, 'sessionKey was set before connect()');
+    client.reset();
+  });
+
+  test('onMessage decrypts auth response with globalKey when sessionKey is null (regression: #12)', function (assert) {
+    const client = new SocketClient();
+    const globalKey = deriveKey('test-auth-key');
+    const newSessionKey = generateSessionKey();
+
+    client.encryptionEnabled = true;
+    client.globalKey = globalKey;
+    client.sessionKey = null;
+    client.promise = { resolve: sinon.stub(), reject: sinon.stub() };
+    sinon.stub(client, 'nextHeartBeat');
+
+    const authResponse = { request: 'auth', response: { authenticated: true }, sessionKey: newSessionKey.toString('base64') };
+    const encrypted = encrypt(JSON.stringify(authResponse), globalKey);
+
+    client.onMessage(encrypted);
+
+    assert.ok(client.sessionKey, 'sessionKey is set after auth');
+    assert.ok(client.sessionKey.equals(newSessionKey), 'sessionKey matches server-provided key');
+    client.reset();
+  });
+
+  test('onMessage fails to decrypt auth response when stale sessionKey is set (proves bug: #12)', function (assert) {
+    const client = new SocketClient();
+    const globalKey = deriveKey('test-auth-key');
+    const staleSessionKey = generateSessionKey();
+
+    client.encryptionEnabled = true;
+    client.globalKey = globalKey;
+    client.sessionKey = staleSessionKey; // Stale key from previous connection
+    client.promise = { resolve: sinon.stub(), reject: sinon.stub() };
+    sinon.stub(client, 'nextHeartBeat');
+
+    const authResponse = { request: 'auth', response: { authenticated: true }, sessionKey: generateSessionKey().toString('base64') };
+    const encrypted = encrypt(JSON.stringify(authResponse), globalKey);
+
+    // With stale sessionKey, decryption fails — caught as "Invalid payload"
+    client.onMessage(encrypted);
+
+    assert.deepEqual(client.sessionKey, staleSessionKey,
+      'sessionKey remains the stale value — decryption failed');
+    assert.false(client.nextHeartBeat.called,
+      'nextHeartBeat was never called — auth handler never reached');
+    client.reset();
+  });
+
+  test('connect() clears sessionKey even when encryption is disabled (regression: #12)', function (assert) {
+    const client = new SocketClient();
+    client.sessionKey = generateSessionKey();
+    client.encryptionEnabled = false;
+
+    client.connect().catch(() => {}); // Rejects — no real server
+
+    assert.strictEqual(client.sessionKey, null, 'sessionKey is null regardless of encryption state');
     client.reset();
   });
 });
