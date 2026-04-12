@@ -49,7 +49,7 @@ export default class SocketServer {
   encryptionEnabled = false;
   globalKey: Buffer | null = null;
 
-  onClientDisconnect: ((client: ConnectedClient) => void) | null = null;
+  onClientDisconnect: ((client: ConnectedClient, code: number, reason: string) => void) | null = null;
 
   constructor() {
     if (SocketServer.instance) return SocketServer.instance;
@@ -83,7 +83,7 @@ export default class SocketServer {
       this.prepareSend(client, ws);
 
       ws.on('message', (payload: Buffer) => this.onMessage(payload, client));
-      ws.on('close', () => this.handleDisconnect(client));
+      ws.on('close', (code: number, reason: Buffer) => this.handleDisconnect(client, code, reason.toString()));
     });
   }
 
@@ -179,11 +179,11 @@ export default class SocketServer {
     };
   }
 
-  handleDisconnect(client: ConnectedClient): void {
+  handleDisconnect(client: ConnectedClient, code?: number, reason?: string): void {
     const { ip } = client;
-    log.socket(`[${ip}] Client disconnected`);
+    log.socket(`[${ip}] Client disconnected (code: ${code ?? 'unknown'}, reason: ${reason || 'none'})`);
     this.clientMap.delete(client.id);
-    this.onClientDisconnect?.(client);
+    this.onClientDisconnect?.(client, code ?? 1006, reason ?? '');
   }
 
   sendTo(clientId: number, request: string, response: unknown): void {

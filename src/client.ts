@@ -43,7 +43,7 @@ export default class SocketClient {
   _heartBeatTimer: ReturnType<typeof setTimeout> | null = null;
   promise: { resolve: () => void; reject: (reason?: unknown) => void } | null = null;
 
-  onDisconnect: (() => void) | null = null;
+  onDisconnect: ((code: number, reason: string) => void) | null = null;
   onReconnecting: ((attempt: number, delay: number) => void) | null = null;
   onReconnected: (() => void) | null = null;
   onReconnectFailed: (() => void) | null = null;
@@ -92,7 +92,7 @@ export default class SocketClient {
       this.socket = socket;
 
       socket.on('message', (data: Buffer) => this.onMessage(data));
-      socket.on('close', () => this.onClose());
+      socket.on('close', (code: number, reason: Buffer) => this.onClose(code, reason.toString()));
       socket.on('error', () => {
         log.socket(`Error connecting to socket server`);
         reject('Error connecting to socket server');
@@ -165,11 +165,11 @@ export default class SocketClient {
     this._heartBeatTimer = setTimeout(() => this.heartBeat(), heartBeatInterval);
   }
 
-  onClose(): void {
-    log.socket('Disconnected from remote server');
+  onClose(code?: number, reason?: string): void {
+    log.socket(`Disconnected from remote server (code: ${code ?? 'unknown'}, reason: ${reason || 'none'})`);
     if (this._heartBeatTimer) clearTimeout(this._heartBeatTimer);
 
-    this.onDisconnect?.();
+    this.onDisconnect?.(code ?? 1006, reason ?? '');
 
     if (!this._intentionalClose) {
       this.reconnect();

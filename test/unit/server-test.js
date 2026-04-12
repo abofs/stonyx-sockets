@@ -76,6 +76,37 @@ module('[Unit] SocketServer', function (hooks) {
     server.reset();
   });
 
+  test('handleDisconnect passes close code and reason to onClientDisconnect', function (assert) {
+    const server = new SocketServer();
+    const spy = sinon.spy();
+    server.onClientDisconnect = spy;
+    const client = { id: 6, ip: '127.0.0.1' };
+    server.clientMap.set(6, client);
+
+    server.handleDisconnect(client, 1001, 'server restart');
+
+    assert.true(spy.calledOnce);
+    assert.strictEqual(spy.firstCall.args[0], client, 'client passed');
+    assert.strictEqual(spy.firstCall.args[1], 1001, 'code passed');
+    assert.strictEqual(spy.firstCall.args[2], 'server restart', 'reason passed');
+    server.reset();
+  });
+
+  test('handleDisconnect defaults code to 1006 and reason to empty string when not provided', function (assert) {
+    const server = new SocketServer();
+    const spy = sinon.spy();
+    server.onClientDisconnect = spy;
+    const client = { id: 7, ip: '127.0.0.1' };
+    server.clientMap.set(7, client);
+
+    server.handleDisconnect(client);
+
+    assert.true(spy.calledOnce);
+    assert.strictEqual(spy.firstCall.args[1], 1006, 'code defaults to 1006');
+    assert.strictEqual(spy.firstCall.args[2], '', 'reason defaults to empty string');
+    server.reset();
+  });
+
   test('broadcast sends to all authenticated clients', function (assert) {
     const server = new SocketServer();
     const sent = [];
