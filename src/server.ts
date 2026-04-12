@@ -179,6 +179,7 @@ export default class SocketServer {
     };
   }
 
+  // ws always provides code and reason; params are optional for direct calls and testing
   handleDisconnect(client: ConnectedClient, code?: number, reason?: string): void {
     const { ip } = client;
     log.socket(`[${ip}] Client disconnected (code: ${code ?? 'unknown'}, reason: ${reason || 'none'})`);

@@ -165,6 +165,7 @@ export default class SocketClient {
     this._heartBeatTimer = setTimeout(() => this.heartBeat(), heartBeatInterval);
   }
 
+  // ws always provides code and reason; params are optional for direct calls and testing
   onClose(code?: number, reason?: string): void {
     log.socket(`Disconnected from remote server (code: ${code ?? 'unknown'}, reason: ${reason || 'none'})`);
     if (this._heartBeatTimer) clearTimeout(this._heartBeatTimer);
