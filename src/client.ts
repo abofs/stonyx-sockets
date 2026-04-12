@@ -81,6 +81,7 @@ export default class SocketClient {
   }
 
   async connect(): Promise<void> {
+    if (this.sessionKey) log.socket('Clearing stale sessionKey');
     this.sessionKey = null;
     return new Promise<void>((resolve, reject) => {
       const { address, authKey, authData } = (config as unknown as Record<string, SocketsConfig>).sockets;
