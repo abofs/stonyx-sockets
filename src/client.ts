@@ -5,18 +5,6 @@ import { forEachFileImport } from '@stonyx/utils/file';
 import { sleep } from '@stonyx/utils/promise';
 import { encrypt, decrypt, deriveKey } from './encryption.js';
 
-interface SocketsConfig {
-  address: string;
-  authKey: string;
-  authData?: Record<string, unknown>;
-  encryption: string | boolean;
-  handlerDir: string;
-  heartBeatInterval: number;
-  reconnectBaseDelay?: number;
-  reconnectMaxDelay?: number;
-  maxReconnectAttempts?: number;
-}
-
 interface SocketMessage {
   request: string;
   data?: unknown;
@@ -56,7 +44,7 @@ export default class SocketClient {
   async init(): Promise<void> {
     await this.discoverHandlers();
 
-    const { encryption, authKey } = (config as unknown as Record<string, SocketsConfig>).sockets;
+    const { encryption, authKey } = config.sockets;
     this.encryptionEnabled = encryption === 'true' || encryption === true;
 
     if (this.encryptionEnabled) {
@@ -67,7 +55,7 @@ export default class SocketClient {
   }
 
   async discoverHandlers(): Promise<void> {
-    const { handlerDir } = (config as unknown as Record<string, SocketsConfig>).sockets;
+    const { handlerDir } = config.sockets;
 
     await forEachFileImport(handlerDir, (HandlerClassUntyped: unknown, { name }) => {
       const HandlerClass = HandlerClassUntyped as new () => HandlerInstance;
@@ -84,7 +72,7 @@ export default class SocketClient {
     if (this.sessionKey) log.socket('Clearing stale sessionKey');
     this.sessionKey = null;
     return new Promise<void>((resolve, reject) => {
-      const { address, authKey, authData } = (config as unknown as Record<string, SocketsConfig>).sockets;
+      const { address, authKey, authData } = config.sockets;
       this.promise = { resolve, reject };
 
       log.socket(`Connecting to remote server: ${address}`);
@@ -95,7 +83,7 @@ export default class SocketClient {
       socket.on('close', (code: number, reason: Buffer) => this.onClose(code, reason.toString()));
       socket.on('error', () => {
         log.socket(`Error connecting to socket server`);
-        reject('Error connecting to socket server');
+        reject(new Error('Error connecting to socket server'));
       });
 
       socket.on('open', () => {
@@ -111,7 +99,8 @@ export default class SocketClient {
       let parsed: SocketMessage;
 
       if (this.encryptionEnabled) {
-        const key = this.sessionKey || this.globalKey!;
+        const key = this.sessionKey || this.globalKey;
+        if (!key) throw new Error('Encryption enabled but no key available');
         const raw = Buffer.isBuffer(payload) ? payload : Buffer.from(payload as string);
         parsed = JSON.parse(decrypt(raw, key)) as SocketMessage;
       } else {
@@ -147,12 +136,14 @@ export default class SocketClient {
   }
 
   send(payload: SocketMessage, useGlobalKey = false): void {
+    if (!this.socket) throw new Error('Socket is not connected');
     if (this.encryptionEnabled) {
-      const key = useGlobalKey ? this.globalKey! : this.sessionKey!;
+      const key = useGlobalKey ? this.globalKey : this.sessionKey;
+      if (!key) throw new Error('Encryption enabled but no key available');
       const data = encrypt(JSON.stringify(payload), key);
-      this.socket!.send(data);
+      this.socket.send(data);
     } else {
-      this.socket!.send(JSON.stringify(payload));
+      this.socket.send(JSON.stringify(payload));
     }
   }
 
@@ -161,7 +152,7 @@ export default class SocketClient {
   }
 
   nextHeartBeat(): void {
-    const { heartBeatInterval } = (config as unknown as Record<string, SocketsConfig>).sockets;
+    const { heartBeatInterval } = config.sockets;
     this._heartBeatTimer = setTimeout(() => this.heartBeat(), heartBeatInterval);
   }
 
@@ -187,7 +178,7 @@ export default class SocketClient {
     const {
       reconnectBaseDelay = 1000,
       reconnectMaxDelay = 60000,
-    } = (config as unknown as Record<string, SocketsConfig>).sockets;
+    } = config.sockets;
 
     const exponential = reconnectBaseDelay * Math.pow(2, this.reconnectCount - 1);
     const capped = Math.min(exponential, reconnectMaxDelay);
@@ -196,7 +187,7 @@ export default class SocketClient {
   }
 
   async reconnect(): Promise<void> {
-    const { maxReconnectAttempts = Infinity } = (config as unknown as Record<string, SocketsConfig>).sockets;
+    const { maxReconnectAttempts = Infinity } = config.sockets;
 
     this.reconnectCount++;
 

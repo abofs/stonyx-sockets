@@ -4,14 +4,6 @@ import log from 'stonyx/log';
 import { forEachFileImport } from '@stonyx/utils/file';
 import { encrypt, decrypt, deriveKey, generateSessionKey } from './encryption.js';
 
-interface SocketsConfig {
-  port: number;
-  encryption: string | boolean;
-  authKey: string;
-  handlerDir: string;
-  debug?: boolean;
-}
-
 interface SocketMessage {
   request: string;
   data?: unknown;
@@ -60,7 +52,7 @@ export default class SocketServer {
     await this.discoverHandlers();
     this.validateAuthHandler();
 
-    const { port, encryption, authKey } = (config as unknown as Record<string, SocketsConfig>).sockets;
+    const { port, encryption, authKey } = config.sockets;
     this.encryptionEnabled = encryption === 'true' || encryption === true;
 
     if (this.encryptionEnabled) {
@@ -88,7 +80,7 @@ export default class SocketServer {
   }
 
   async discoverHandlers(): Promise<void> {
-    const { handlerDir } = (config as unknown as Record<string, SocketsConfig>).sockets;
+    const { handlerDir } = config.sockets;
 
     await forEachFileImport(handlerDir, (HandlerClassUntyped: unknown, { name }) => {
       const HandlerClass = HandlerClassUntyped as new () => HandlerInstance;
@@ -112,7 +104,8 @@ export default class SocketServer {
       let parsed: SocketMessage;
 
       if (this.encryptionEnabled) {
-        const key = client.__authenticated ? client.__sessionKey! : this.globalKey!;
+        const key = client.__authenticated ? client.__sessionKey : this.globalKey;
+        if (!key) throw new Error('Encryption enabled but no key available');
         const raw = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
         parsed = JSON.parse(decrypt(raw, key)) as SocketMessage;
       } else {
@@ -149,7 +142,8 @@ export default class SocketServer {
         if (this.encryptionEnabled) {
           const sessionKey = generateSessionKey();
           client.__sessionKey = sessionKey;
-          client.send({ request, response, sessionKey: sessionKey.toString('base64') }, this.globalKey!);
+          if (!this.globalKey) throw new Error('Encryption enabled but globalKey not initialized');
+          client.send({ request, response, sessionKey: sessionKey.toString('base64') }, this.globalKey);
         } else {
           client.send({ request, response });
         }
@@ -159,7 +153,7 @@ export default class SocketServer {
       client.send({ request, response });
     } catch (error) {
       log.socket(`Invalid payload from client`);
-      if ((config as Record<string, unknown>).debug) console.error(error);
+      if (config.debug) console.error(error);
       client.close();
     }
   }
@@ -170,7 +164,8 @@ export default class SocketServer {
 
     client.send = (payload: SocketMessage, keyOverride?: Buffer) => {
       if (server.encryptionEnabled) {
-        const key = keyOverride || client.__sessionKey!;
+        const key = keyOverride || client.__sessionKey;
+        if (!key) throw new Error('Encryption enabled but no key available');
         const data = encrypt(JSON.stringify(payload), key);
         socketSend(data);
       } else {
