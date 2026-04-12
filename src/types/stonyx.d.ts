@@ -1,5 +1,23 @@
 declare module 'stonyx/config' {
-  const config: Record<string, unknown>;
+  interface SocketsConfig {
+    port: number;
+    address: string;
+    authKey: string;
+    authData?: Record<string, unknown>;
+    encryption: string | boolean;
+    handlerDir: string;
+    heartBeatInterval: number;
+    reconnectBaseDelay?: number;
+    reconnectMaxDelay?: number;
+    maxReconnectAttempts?: number;
+    debug?: boolean;
+  }
+  interface Config {
+    sockets: SocketsConfig;
+    debug?: boolean;
+    [key: string]: unknown;
+  }
+  const config: Config;
   export default config;
 }
 
