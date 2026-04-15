@@ -22,7 +22,7 @@ module('[Unit] SocketClient', function (hooks) {
 
   test('reset() clears instance and state', function (assert) {
     const client = new SocketClient();
-    client.handlers = { echo: {} };
+    client.handlers = { echo: {} } as unknown as typeof client.handlers;
     client.sessionKey = Buffer.alloc(32);
     client.reconnectCount = 3;
     client._intentionalClose = true;
@@ -69,7 +69,7 @@ module('[Unit] SocketClient', function (hooks) {
 
   test('close() sets _intentionalClose flag', function (assert) {
     const client = new SocketClient();
-    client.socket = { close: sinon.stub() };
+    client.socket = { close: sinon.stub() } as unknown as typeof client.socket;
 
     client.close();
 
@@ -80,7 +80,7 @@ module('[Unit] SocketClient', function (hooks) {
   test('onClose calls onDisconnect hook', function (assert) {
     const client = new SocketClient();
     const spy = sinon.spy();
-    client.onDisconnect = spy;
+    client.onDisconnect = spy as typeof client.onDisconnect;
     client._intentionalClose = true;
 
     client.onClose();
@@ -92,7 +92,7 @@ module('[Unit] SocketClient', function (hooks) {
   test('onClose passes close code and reason to onDisconnect', function (assert) {
     const client = new SocketClient();
     const spy = sinon.spy();
-    client.onDisconnect = spy;
+    client.onDisconnect = spy as typeof client.onDisconnect;
     client._intentionalClose = true;
 
     client.onClose(1001, 'server restart');
@@ -106,7 +106,7 @@ module('[Unit] SocketClient', function (hooks) {
   test('onClose defaults code to 1006 and reason to empty string when not provided', function (assert) {
     const client = new SocketClient();
     const spy = sinon.spy();
-    client.onDisconnect = spy;
+    client.onDisconnect = spy as typeof client.onDisconnect;
     client._intentionalClose = true;
 
     client.onClose();
@@ -145,7 +145,7 @@ module('[Unit] SocketClient', function (hooks) {
 
     const client = new SocketClient();
     const spy = sinon.spy();
-    client.onReconnecting = spy;
+    client.onReconnecting = spy as typeof client.onReconnecting;
     sinon.stub(client, 'connect').rejects('fail');
     sinon.stub(client, 'getReconnectDelay').returns(0);
     client._intentionalClose = true;
@@ -166,7 +166,7 @@ module('[Unit] SocketClient', function (hooks) {
 
     const client = new SocketClient();
     const spy = sinon.spy();
-    client.onReconnected = spy;
+    client.onReconnected = spy as typeof client.onReconnected;
     sinon.stub(client, 'connect').resolves();
     sinon.stub(client, 'getReconnectDelay').returns(0);
     client._intentionalClose = true;
@@ -182,7 +182,7 @@ module('[Unit] SocketClient', function (hooks) {
   test('reconnect calls onReconnectFailed when max attempts exceeded', async function (assert) {
     const client = new SocketClient();
     const spy = sinon.spy();
-    client.onReconnectFailed = spy;
+    client.onReconnectFailed = spy as typeof client.onReconnectFailed;
 
     await client.reconnect();
 
@@ -211,7 +211,7 @@ module('[Unit] SocketClient', function (hooks) {
     client.encryptionEnabled = true;
     client.globalKey = globalKey;
     client.sessionKey = null;
-    client.promise = { resolve: sinon.stub(), reject: sinon.stub() };
+    client.promise = { resolve: sinon.stub() as unknown as () => void, reject: sinon.stub() as unknown as (reason?: unknown) => void };
     sinon.stub(client, 'nextHeartBeat');
 
     const authResponse = { request: 'auth', response: { authenticated: true }, sessionKey: newSessionKey.toString('base64') };
@@ -220,7 +220,7 @@ module('[Unit] SocketClient', function (hooks) {
     client.onMessage(encrypted);
 
     assert.ok(client.sessionKey, 'sessionKey is set after auth');
-    assert.ok(client.sessionKey.equals(newSessionKey), 'sessionKey matches server-provided key');
+    assert.ok(client.sessionKey!.equals(newSessionKey), 'sessionKey matches server-provided key');
     client.reset();
   });
 
@@ -232,8 +232,8 @@ module('[Unit] SocketClient', function (hooks) {
     client.encryptionEnabled = true;
     client.globalKey = globalKey;
     client.sessionKey = staleSessionKey; // Stale key from previous connection
-    client.promise = { resolve: sinon.stub(), reject: sinon.stub() };
-    sinon.stub(client, 'nextHeartBeat');
+    client.promise = { resolve: sinon.stub() as unknown as () => void, reject: sinon.stub() as unknown as (reason?: unknown) => void };
+    const nextHeartBeatStub = sinon.stub(client, 'nextHeartBeat');
 
     const authResponse = { request: 'auth', response: { authenticated: true }, sessionKey: generateSessionKey().toString('base64') };
     const encrypted = encrypt(JSON.stringify(authResponse), globalKey);
@@ -243,7 +243,7 @@ module('[Unit] SocketClient', function (hooks) {
 
     assert.deepEqual(client.sessionKey, staleSessionKey,
       'sessionKey remains the stale value — decryption failed');
-    assert.false(client.nextHeartBeat.called,
+    assert.false(nextHeartBeatStub.called,
       'nextHeartBeat was never called — auth handler never reached');
     client.reset();
   });

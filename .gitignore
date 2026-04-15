@@ -10,3 +10,4 @@ dist-test/
 
 # npm auth (never commit tokens)
 .npmrc
+.ts-migration-log.json
