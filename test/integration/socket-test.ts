@@ -5,10 +5,14 @@ import { setupIntegrationTests } from 'stonyx/test-helpers';
 
 const { module, test } = QUnit;
 
+interface TestClient extends SocketClient {
+  _lastEchoResponse?: unknown;
+}
+
 module('[Integration] Sockets', function (hooks) {
   setupIntegrationTests(hooks);
 
-  let extraClients = [];
+  let extraClients: SocketClient[] = [];
 
   hooks.afterEach(function () {
     for (const c of extraClients) c.reset();
@@ -64,7 +68,7 @@ module('[Integration] Sockets', function (hooks) {
 
     await new Promise(resolve => setTimeout(resolve, 200));
 
-    assert.deepEqual(client._lastEchoResponse, { msg: 'test-message' }, 'Echo response received');
+    assert.deepEqual((client as TestClient)._lastEchoResponse, { msg: 'test-message' }, 'Echo response received');
   });
 
   test('Built-in heartbeat round-trip works', async function (assert) {
@@ -74,7 +78,7 @@ module('[Integration] Sockets', function (hooks) {
     const client = new SocketClient();
     await client.init();
 
-    clearTimeout(client._heartBeatTimer);
+    if (client._heartBeatTimer) clearTimeout(client._heartBeatTimer);
 
     client.send({ request: 'heartBeat' });
 
@@ -110,7 +114,7 @@ module('[Integration] Sockets', function (hooks) {
     await client.init();
 
     const [clientId] = server.clientMap.keys();
-    const targetClient = server.clientMap.get(clientId);
+    const targetClient = server.clientMap.get(clientId)!;
     targetClient.meta = { userId: 'user-1' };
 
     server.sendToByMeta('userId', 'user-1', 'echo', { msg: 'server-pushed' });
@@ -118,7 +122,7 @@ module('[Integration] Sockets', function (hooks) {
     await new Promise(resolve => setTimeout(resolve, 200));
 
     assert.deepEqual(
-      client._lastEchoResponse,
+      (client as TestClient)._lastEchoResponse,
       { msg: 'server-pushed' },
       'Client handler received server-initiated message via response field'
     );
@@ -138,7 +142,7 @@ module('[Integration] Sockets', function (hooks) {
     await new Promise(resolve => setTimeout(resolve, 200));
 
     assert.deepEqual(
-      client._lastEchoResponse,
+      (client as TestClient)._lastEchoResponse,
       { msg: 'targeted' },
       'sendTo delivered message to the correct authenticated client'
     );
@@ -162,12 +166,12 @@ module('[Integration] Sockets', function (hooks) {
     await new Promise(resolve => setTimeout(resolve, 200));
 
     assert.deepEqual(
-      client1._lastEchoResponse,
+      (client1 as TestClient)._lastEchoResponse,
       { msg: 'broadcast-all' },
       'First client received broadcast via echo handler'
     );
     assert.deepEqual(
-      client2._lastEchoResponse,
+      (client2 as TestClient)._lastEchoResponse,
       { msg: 'broadcast-all' },
       'Second client received broadcast via echo handler'
     );

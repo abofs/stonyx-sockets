@@ -20,8 +20,8 @@ module('[Unit] SocketServer', function (hooks) {
 
   test('reset() clears instance and state', function (assert) {
     const server = new SocketServer();
-    server.handlers = { auth: {} };
-    server.clientMap.set(1, {});
+    server.handlers = { auth: {} } as unknown as typeof server.handlers;
+    server.clientMap.set(1, {} as unknown as Parameters<typeof server.clientMap.set>[1]);
 
     server.reset();
 
@@ -43,7 +43,7 @@ module('[Unit] SocketServer', function (hooks) {
 
   test('validateAuthHandler does not throw when auth handler exists', function (assert) {
     const server = new SocketServer();
-    server.handlers = { auth: { server() { return 'success'; } } };
+    server.handlers = { auth: { server() { return 'success'; } } } as unknown as typeof server.handlers;
 
     server.validateAuthHandler();
     assert.ok(true, 'No error thrown');
@@ -53,7 +53,7 @@ module('[Unit] SocketServer', function (hooks) {
 
   test('handleDisconnect removes client from clientMap', function (assert) {
     const server = new SocketServer();
-    const client = { id: 5, ip: '127.0.0.1' };
+    const client = { id: 5, ip: '127.0.0.1' } as Parameters<typeof server.handleDisconnect>[0];
     server.clientMap.set(5, client);
 
     server.handleDisconnect(client);
@@ -65,8 +65,8 @@ module('[Unit] SocketServer', function (hooks) {
   test('handleDisconnect calls onClientDisconnect hook', function (assert) {
     const server = new SocketServer();
     const spy = sinon.spy();
-    server.onClientDisconnect = spy;
-    const client = { id: 5, ip: '127.0.0.1' };
+    server.onClientDisconnect = spy as typeof server.onClientDisconnect;
+    const client = { id: 5, ip: '127.0.0.1' } as Parameters<typeof server.handleDisconnect>[0];
     server.clientMap.set(5, client);
 
     server.handleDisconnect(client);
@@ -79,8 +79,8 @@ module('[Unit] SocketServer', function (hooks) {
   test('handleDisconnect passes close code and reason to onClientDisconnect', function (assert) {
     const server = new SocketServer();
     const spy = sinon.spy();
-    server.onClientDisconnect = spy;
-    const client = { id: 6, ip: '127.0.0.1' };
+    server.onClientDisconnect = spy as typeof server.onClientDisconnect;
+    const client = { id: 6, ip: '127.0.0.1' } as Parameters<typeof server.handleDisconnect>[0];
     server.clientMap.set(6, client);
 
     server.handleDisconnect(client, 1001, 'server restart');
@@ -95,8 +95,8 @@ module('[Unit] SocketServer', function (hooks) {
   test('handleDisconnect defaults code to 1006 and reason to empty string when not provided', function (assert) {
     const server = new SocketServer();
     const spy = sinon.spy();
-    server.onClientDisconnect = spy;
-    const client = { id: 7, ip: '127.0.0.1' };
+    server.onClientDisconnect = spy as typeof server.onClientDisconnect;
+    const client = { id: 7, ip: '127.0.0.1' } as Parameters<typeof server.handleDisconnect>[0];
     server.clientMap.set(7, client);
 
     server.handleDisconnect(client);
@@ -109,11 +109,12 @@ module('[Unit] SocketServer', function (hooks) {
 
   test('broadcast sends to all authenticated clients', function (assert) {
     const server = new SocketServer();
-    const sent = [];
+    const sent: { id: number; msg: unknown }[] = [];
 
-    const client1 = { __authenticated: true, send: msg => sent.push({ id: 1, msg }) };
-    const client2 = { __authenticated: false, send: msg => sent.push({ id: 2, msg }) };
-    const client3 = { __authenticated: true, send: msg => sent.push({ id: 3, msg }) };
+    type MockClient = Parameters<typeof server.clientMap.set>[1];
+    const client1 = { __authenticated: true, send: (msg: unknown) => sent.push({ id: 1, msg }) } as unknown as MockClient;
+    const client2 = { __authenticated: false, send: (msg: unknown) => sent.push({ id: 2, msg }) } as unknown as MockClient;
+    const client3 = { __authenticated: true, send: (msg: unknown) => sent.push({ id: 3, msg }) } as unknown as MockClient;
 
     server.clientMap.set(1, client1);
     server.clientMap.set(2, client2);
@@ -130,9 +131,10 @@ module('[Unit] SocketServer', function (hooks) {
 
   test('sendTo sends to specific client by id', function (assert) {
     const server = new SocketServer();
-    let received = null;
+    let received: unknown = null;
 
-    const client = { send: msg => { received = msg; } };
+    type MockClient = Parameters<typeof server.clientMap.set>[1];
+    const client = { send: (msg: unknown) => { received = msg; } } as unknown as MockClient;
     server.clientMap.set(42, client);
 
     server.sendTo(42, 'update', { score: 100 });
@@ -151,13 +153,14 @@ module('[Unit] SocketServer', function (hooks) {
 
   test('sendToByMeta sends to client matching meta key/value', function (assert) {
     const server = new SocketServer();
-    let received = null;
+    let received: unknown = null;
 
+    type MockClient = Parameters<typeof server.clientMap.set>[1];
     const client = {
       __authenticated: true,
       meta: { agent: 'Trix' },
-      send: msg => { received = msg; },
-    };
+      send: (msg: unknown) => { received = msg; },
+    } as unknown as MockClient;
     server.clientMap.set(1, client);
 
     const result = server.sendToByMeta('agent', 'Trix', 'dispatch', { text: 'hello' });
@@ -170,41 +173,44 @@ module('[Unit] SocketServer', function (hooks) {
   test('sendToByMeta returns false when no match', function (assert) {
     const server = new SocketServer();
 
+    type MockClient = Parameters<typeof server.clientMap.set>[1];
     const client = {
       __authenticated: true,
       meta: { agent: 'Bee' },
       send: sinon.stub(),
-    };
+    } as unknown as MockClient;
     server.clientMap.set(1, client);
 
     const result = server.sendToByMeta('agent', 'Trix', 'dispatch', {});
 
     assert.false(result);
-    assert.false(client.send.called);
+    assert.false((client.send as unknown as { called: boolean }).called);
     server.reset();
   });
 
   test('sendToByMeta skips unauthenticated clients', function (assert) {
     const server = new SocketServer();
 
+    type MockClient = Parameters<typeof server.clientMap.set>[1];
     const client = {
       __authenticated: false,
       meta: { agent: 'Trix' },
       send: sinon.stub(),
-    };
+    } as unknown as MockClient;
     server.clientMap.set(1, client);
 
     const result = server.sendToByMeta('agent', 'Trix', 'dispatch', {});
 
     assert.false(result);
-    assert.false(client.send.called);
+    assert.false((client.send as unknown as { called: boolean }).called);
     server.reset();
   });
 
   test('sendToByMeta handles clients without meta', function (assert) {
     const server = new SocketServer();
 
-    const client = { __authenticated: true, send: sinon.stub() };
+    type MockClient = Parameters<typeof server.clientMap.set>[1];
+    const client = { __authenticated: true, send: sinon.stub() } as unknown as MockClient;
     server.clientMap.set(1, client);
 
     const result = server.sendToByMeta('agent', 'Trix', 'dispatch', {});

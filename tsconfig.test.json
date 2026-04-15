@@ -3,9 +3,9 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist-test",
+    "strict": false,
     "declaration": false,
-    "allowJs": true,
-    "checkJs": false
+    "declarationMap": false
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "config"]
 }
