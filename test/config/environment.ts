@@ -12,7 +12,7 @@ interface TestEnvironmentConfig {
 
 const config: TestEnvironmentConfig = {
   sockets: {
-    handlerDir: './test/sample/socket-handlers',
+    handlerDir: './dist-test/test/sample/socket-handlers',
     heartBeatInterval: 60000,
     encryption: 'false',
     maxReconnectAttempts: 0,
