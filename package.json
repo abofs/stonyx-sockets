@@ -4,7 +4,7 @@
     "stonyx-async",
     "stonyx-module"
   ],
-  "version": "0.1.1-beta.34",
+  "version": "0.1.1-beta.35",
   "description": "WebSocket server and client module for the Stonyx framework",
   "main": "dist/main.js",
   "types": "dist/main.d.ts",
@@ -57,7 +57,7 @@
   },
   "homepage": "https://github.com/abofs/stonyx-sockets#readme",
   "dependencies": {
-    "stonyx": "0.2.3-beta.61",
+    "stonyx": "0.2.3-beta.62",
     "ws": "^8.18.1"
   },
   "devDependencies": {
