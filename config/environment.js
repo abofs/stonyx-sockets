@@ -11,25 +11,9 @@ const {
   SOCKET_MAX_RECONNECT_ATTEMPTS,
 } = process.env;
 
-const port: string | number = SOCKET_PORT ?? 2667;
+const port = SOCKET_PORT ?? 2667;
 
-interface SocketsEnvironmentConfig {
-  port: string | number;
-  address: string;
-  authKey: string;
-  authData: Record<string, unknown>;
-  heartBeatInterval: string | number;
-  handlerDir: string;
-  log: string | boolean;
-  logColor: string;
-  logMethod: string;
-  encryption: string;
-  reconnectBaseDelay: string | number;
-  reconnectMaxDelay: string | number;
-  maxReconnectAttempts: string | number;
-}
-
-const config: SocketsEnvironmentConfig = {
+const config = {
   port,
   address: SOCKET_ADDRESS ?? `ws://localhost:${port}`,
   authKey: SOCKET_AUTH_KEY ?? 'AUTH_KEY',
