@@ -49,6 +49,11 @@ export default class SocketServer {
   }
 
   async init(): Promise<void> {
+    // Self-register so log.socket works even when @stonyx/sockets is in the
+    // consumer's `dependencies` (stonyx loader only merges devDependencies).
+    const { logColor = 'white', logMethod = 'socket' } = config.sockets;
+    log.defineType(logMethod, logColor);
+
     await this.discoverHandlers();
     this.validateAuthHandler();
 

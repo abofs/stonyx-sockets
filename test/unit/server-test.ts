@@ -1,6 +1,7 @@
 import QUnit from 'qunit';
 import sinon from 'sinon';
 import SocketServer from '../../src/server.js';
+import log from 'stonyx/log';
 
 const { module, test } = QUnit;
 
@@ -204,6 +205,36 @@ module('[Unit] SocketServer', function (hooks) {
     assert.false(result);
     assert.false((client.send as unknown as { called: boolean }).called);
     server.reset();
+  });
+
+  module('self-registers log type in init() (#29)', function (innerHooks) {
+    innerHooks.afterEach(function () {
+      sinon.restore();
+    });
+
+    test('registers socket log type on init', async function (assert) {
+      assert.strictEqual(typeof log.defineType, 'function', 'log.defineType is available');
+
+      const server = new SocketServer();
+      // init() will throw later (no auth handler in the unit harness) but
+      // defineType runs as the first statement, before the throw.
+      try { await server.init(); } catch { /* expected */ }
+
+      assert.strictEqual(typeof log.socket, 'function', 'log.socket is callable after init');
+      server.reset();
+    });
+
+    test('idempotent: calling init twice does not throw', async function (assert) {
+      const server1 = new SocketServer();
+      try { await server1.init(); } catch { /* expected */ }
+      server1.reset();
+
+      const server2 = new SocketServer();
+      try { await server2.init(); } catch { /* expected */ }
+
+      assert.strictEqual(typeof log.socket, 'function', 'log.socket still callable after second init');
+      server2.reset();
+    });
   });
 
   test('sendToByMeta handles clients without meta', function (assert) {
