@@ -115,6 +115,8 @@ export default class SocketClient {
           this.sessionKey = Buffer.from(sessionKey, 'base64');
         }
         this.nextHeartBeat();
+        this.promise?.resolve();
+        this.promise = null;
       }
 
       if (request === 'heartBeat') {
