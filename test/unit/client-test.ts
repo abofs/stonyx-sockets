@@ -203,6 +203,21 @@ module('[Unit] SocketClient', function (hooks) {
     client.reset();
   });
 
+  test('onMessage resolves connect promise on auth response (regression: #31)', function (assert) {
+    const client = new SocketClient();
+    const resolveSpy = sinon.spy();
+    client.promise = { resolve: resolveSpy as unknown as () => void, reject: sinon.stub() as unknown as (reason?: unknown) => void };
+    client.encryptionEnabled = false;
+    sinon.stub(client, 'nextHeartBeat');
+
+    const authResponse = JSON.stringify({ request: 'auth', response: { authenticated: true } });
+    client.onMessage(Buffer.from(authResponse));
+
+    assert.true(resolveSpy.calledOnce, 'promise.resolve() called on auth');
+    assert.strictEqual(client.promise, null, 'promise nulled after resolve');
+    client.reset();
+  });
+
   test('onMessage decrypts auth response with globalKey when sessionKey is null (regression: #12)', function (assert) {
     const client = new SocketClient();
     const globalKey = deriveKey('test-auth-key');
