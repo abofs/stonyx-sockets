@@ -29,6 +29,7 @@ export default class SocketClient {
   globalKey: Buffer | null = null;
   encryptionEnabled = false;
   _heartBeatTimer: ReturnType<typeof setTimeout> | null = null;
+  _heartBeatResponseTimer: ReturnType<typeof setTimeout> | null = null;
   promise: { resolve: () => void; reject: (reason?: unknown) => void } | null = null;
 
   onDisconnect: ((code: number, reason: string) => void) | null = null;
@@ -154,14 +155,24 @@ export default class SocketClient {
   }
 
   nextHeartBeat(): void {
+    if (this._heartBeatResponseTimer) clearTimeout(this._heartBeatResponseTimer);
+    this._heartBeatResponseTimer = null;
     const { heartBeatInterval } = config.sockets;
-    this._heartBeatTimer = setTimeout(() => this.heartBeat(), heartBeatInterval);
+    this._heartBeatTimer = setTimeout(() => {
+      this.heartBeat();
+      this._heartBeatResponseTimer = setTimeout(() => {
+        log.socket('Heartbeat response timeout — closing stale connection');
+        if (this.socket) this.socket.close();
+      }, heartBeatInterval);
+    }, heartBeatInterval);
   }
 
   // ws always provides code and reason; params are optional for direct calls and testing
   onClose(code?: number, reason?: string): void {
     log.socket(`Disconnected from remote server (code: ${code ?? 'unknown'}, reason: ${reason || 'none'})`);
     if (this._heartBeatTimer) clearTimeout(this._heartBeatTimer);
+    if (this._heartBeatResponseTimer) clearTimeout(this._heartBeatResponseTimer);
+    this._heartBeatResponseTimer = null;
 
     this.onDisconnect?.(code ?? 1006, reason ?? '');
 
@@ -173,6 +184,8 @@ export default class SocketClient {
   close(): void {
     this._intentionalClose = true;
     if (this._heartBeatTimer) clearTimeout(this._heartBeatTimer);
+    if (this._heartBeatResponseTimer) clearTimeout(this._heartBeatResponseTimer);
+    this._heartBeatResponseTimer = null;
     if (this.socket) this.socket.close();
   }
 

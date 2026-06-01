@@ -263,6 +263,132 @@ module('[Unit] SocketClient', function (hooks) {
     client.reset();
   });
 
+  test('nextHeartBeat schedules a response timeout after heartbeat is sent (#33)', function (assert) {
+    const clock = (sinon as any).useFakeTimers();
+    const client = new SocketClient();
+    client.socket = { send: sinon.stub(), close: sinon.stub() } as unknown as typeof client.socket;
+    client.encryptionEnabled = false;
+
+    const { heartBeatInterval } = config.sockets;
+    client.nextHeartBeat();
+
+    // Advance past the heartbeat send timer
+    clock.tick(heartBeatInterval);
+
+    assert.notStrictEqual(client._heartBeatResponseTimer, null, 'response timeout is scheduled after heartbeat sent');
+    clock.restore();
+    client.reset();
+  });
+
+  test('response timeout fires socket.close() when no heartbeat response arrives (#33)', function (assert) {
+    const clock = (sinon as any).useFakeTimers();
+    const client = new SocketClient();
+    const closeStub = sinon.stub();
+    client.socket = { send: sinon.stub(), close: closeStub } as unknown as typeof client.socket;
+    client.encryptionEnabled = false;
+
+    const { heartBeatInterval } = config.sockets;
+    client.nextHeartBeat();
+
+    // Advance past heartbeat send + response timeout
+    clock.tick(heartBeatInterval * 2);
+
+    assert.true(closeStub.calledOnce, 'socket.close() called when response timeout fires');
+    clock.restore();
+    client.reset();
+  });
+
+  test('heartbeat response clears the response timeout (#33)', function (assert) {
+    const clock = (sinon as any).useFakeTimers();
+    const client = new SocketClient();
+    client.socket = { send: sinon.stub(), close: sinon.stub() } as unknown as typeof client.socket;
+    client.encryptionEnabled = false;
+
+    const { heartBeatInterval } = config.sockets;
+    client.nextHeartBeat();
+
+    // Fire the heartbeat send
+    clock.tick(heartBeatInterval);
+    assert.notStrictEqual(client._heartBeatResponseTimer, null, 'response timer set after heartbeat');
+
+    // Simulate server response — nextHeartBeat() is called again
+    client.nextHeartBeat();
+    assert.strictEqual(client._heartBeatResponseTimer, null, 'response timer cleared on heartbeat response');
+
+    clock.restore();
+    client.reset();
+  });
+
+  test('onClose clears the heartbeat response timeout (#33)', function (assert) {
+    const clock = (sinon as any).useFakeTimers();
+    const client = new SocketClient();
+    client.socket = { send: sinon.stub(), close: sinon.stub() } as unknown as typeof client.socket;
+    client.encryptionEnabled = false;
+    client._intentionalClose = true;
+
+    const { heartBeatInterval } = config.sockets;
+    client.nextHeartBeat();
+    clock.tick(heartBeatInterval);
+    assert.notStrictEqual(client._heartBeatResponseTimer, null, 'response timer exists before onClose');
+
+    client.onClose();
+
+    assert.strictEqual(client._heartBeatResponseTimer, null, 'response timer cleared by onClose');
+    clock.restore();
+    client.reset();
+  });
+
+  test('close() clears the heartbeat response timeout (#33)', function (assert) {
+    const clock = (sinon as any).useFakeTimers();
+    const client = new SocketClient();
+    client.socket = { send: sinon.stub(), close: sinon.stub() } as unknown as typeof client.socket;
+    client.encryptionEnabled = false;
+
+    const { heartBeatInterval } = config.sockets;
+    client.nextHeartBeat();
+    clock.tick(heartBeatInterval);
+    assert.notStrictEqual(client._heartBeatResponseTimer, null, 'response timer exists before close');
+
+    client.close();
+
+    assert.strictEqual(client._heartBeatResponseTimer, null, 'response timer cleared by close()');
+    clock.restore();
+    client.reset();
+  });
+
+  test('heartbeat loop continues normally when responses arrive on time (#33)', function (assert) {
+    const clock = (sinon as any).useFakeTimers();
+    const client = new SocketClient();
+    const sendStub = sinon.stub();
+    client.socket = { send: sendStub, close: sinon.stub() } as unknown as typeof client.socket;
+    client.encryptionEnabled = false;
+
+    const { heartBeatInterval } = config.sockets;
+
+    // First cycle
+    client.nextHeartBeat();
+    clock.tick(heartBeatInterval);
+    assert.true(sendStub.calledOnce, 'first heartbeat sent');
+
+    // Server responds — nextHeartBeat called again
+    client.nextHeartBeat();
+    assert.strictEqual(client._heartBeatResponseTimer, null, 'response timer cleared');
+
+    // Second cycle
+    clock.tick(heartBeatInterval);
+    assert.strictEqual((sendStub as any).callCount, 2, 'second heartbeat sent');
+
+    // Server responds again
+    client.nextHeartBeat();
+    assert.strictEqual(client._heartBeatResponseTimer, null, 'response timer cleared again');
+
+    // No socket.close should have been called
+    assert.false((client.socket!.close as any).called, 'socket.close never called during normal operation');
+
+    clock.restore();
+    client.reset();
+  });
+
   test('connect() clears sessionKey even when encryption is disabled (regression: #12)', function (assert) {
     const client = new SocketClient();
     client.sessionKey = generateSessionKey();
