@@ -52,6 +52,8 @@ export default class SocketClient {
       this.globalKey = deriveKey(authKey);
     }
 
+    if (process.env.NODE_ENV === 'test') return;
+
     return this.connect();
   }
 

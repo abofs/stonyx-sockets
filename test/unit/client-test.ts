@@ -399,4 +399,15 @@ module('[Unit] SocketClient', function (hooks) {
     assert.strictEqual(client.sessionKey, null, 'sessionKey is null regardless of encryption state');
     client.reset();
   });
+
+  test('init() does not call connect() when NODE_ENV=test', async function (assert) {
+    const client = new SocketClient();
+    const connectStub = sinon.stub(client, 'connect').resolves();
+    sinon.stub(client, 'discoverHandlers').resolves();
+
+    await client.init();
+
+    assert.false(connectStub.called, 'connect() not called in test mode');
+    client.reset();
+  });
 });
