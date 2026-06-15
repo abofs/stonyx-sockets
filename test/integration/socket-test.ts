@@ -30,6 +30,7 @@ module('[Integration] Sockets', function (hooks) {
 
     const client = new SocketClient();
     await client.init();
+    await client.connect();
 
     assert.ok(server.clientMap.size > 0, 'Client registered in server clientMap');
     assert.ok(client.socket, 'Client has active socket');
@@ -41,6 +42,7 @@ module('[Integration] Sockets', function (hooks) {
 
     const client = new SocketClient();
     await client.init();
+    await client.connect();
 
     client.send({ request: 'echo', data: { msg: 'hello' } });
 
@@ -63,6 +65,7 @@ module('[Integration] Sockets', function (hooks) {
 
     const client = new SocketClient();
     await client.init();
+    await client.connect();
 
     client.send({ request: 'echo', data: { msg: 'test-message' } });
 
@@ -77,6 +80,7 @@ module('[Integration] Sockets', function (hooks) {
 
     const client = new SocketClient();
     await client.init();
+    await client.connect();
 
     if (client._heartBeatTimer) clearTimeout(client._heartBeatTimer);
 
@@ -92,10 +96,12 @@ module('[Integration] Sockets', function (hooks) {
 
     const client1 = new SocketClient();
     await client1.init();
+    await client1.connect();
 
     SocketClient.instance = null;
     const client2 = new SocketClient();
     await client2.init();
+    await client2.connect();
 
     extraClients.push(client1);
 
@@ -112,6 +118,7 @@ module('[Integration] Sockets', function (hooks) {
 
     const client = new SocketClient();
     await client.init();
+    await client.connect();
 
     const [clientId] = server.clientMap.keys();
     const targetClient = server.clientMap.get(clientId)!;
@@ -134,6 +141,7 @@ module('[Integration] Sockets', function (hooks) {
 
     const client = new SocketClient();
     await client.init();
+    await client.connect();
 
     const [clientId] = server.clientMap.keys();
 
@@ -154,10 +162,12 @@ module('[Integration] Sockets', function (hooks) {
 
     const client1 = new SocketClient();
     await client1.init();
+    await client1.connect();
 
     SocketClient.instance = null;
     const client2 = new SocketClient();
     await client2.init();
+    await client2.connect();
 
     extraClients.push(client1);
 
