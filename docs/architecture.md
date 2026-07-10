@@ -86,7 +86,7 @@ payload received
   → decrypt (if encryption enabled, using session key or global key for auth)
   → JSON.parse
   → heartBeat? → respond with true, return
-  → handler lookup by request name
+  → handler lookup by request name (with kebab-to-camelCase fallback)
   → auth gate: if not auth handler, not skipAuth, not authenticated → reject + close
   → call handler.server(data, client)
   → if return value is truthy:
@@ -102,7 +102,7 @@ payload received
   → JSON.parse
   → auth response? → store session key, start heartbeat
   → heartBeat response? → schedule next heartbeat, return
-  → handler lookup by request name
+  → handler lookup by request name (with kebab-to-camelCase fallback)
   → call handler.client(response) with this.client bound
 ```
 

@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import config from 'stonyx/config';
 import log from 'stonyx/log';
 import { forEachFileImport } from '@stonyx/utils/file';
+import { kebabCaseToCamelCase } from '@stonyx/utils/string';
 import { sleep } from '@stonyx/utils/promise';
 import { encrypt, decrypt, deriveKey } from './encryption.js';
 
@@ -127,7 +128,7 @@ export default class SocketClient {
         return;
       }
 
-      const handler = this.handlers[request];
+      const handler = this.handlers[request] ?? this.handlers[kebabCaseToCamelCase(request)];
 
       if (!handler) {
         log.socket(`Call to invalid handler: ${request}`);
