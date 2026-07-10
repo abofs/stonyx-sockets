@@ -143,11 +143,12 @@ await forEachFileImport(handlerDir, (HandlerClass, { name }) => {
 
 ## Wire Protocol
 
-All messages are JSON objects with a `request` field:
+All messages are JSON objects with a `request` field. The `request` value can be either camelCase (`handlerName`) or kebab-case (`handler-name`) — dispatch normalizes kebab-case to camelCase to match the registered handler key:
 
 ```javascript
 // Client → Server (outgoing request)
 { request: 'handlerName', data: { ... } }
+{ request: 'handler-name', data: { ... } }   // also works — normalized to camelCase
 
 // Server → Client (response from handler return value)
 { request: 'handlerName', response: { ... } }
