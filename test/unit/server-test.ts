@@ -249,4 +249,74 @@ module('[Unit] SocketServer', function (hooks) {
     assert.false(result);
     server.reset();
   });
+
+  module('camelCase dispatch normalization (#37)', function () {
+    test('dispatches kebab-case request to camelCased handler on authenticated client', async function (assert) {
+      const server = new SocketServer();
+      server.encryptionEnabled = false;
+      const spy = sinon.spy();
+      server.handlers = {
+        testHandler: { server: spy, constructor: { skipAuth: false } } as unknown as typeof server.handlers[string],
+      };
+
+      type MockClient = Parameters<typeof server.onMessage>[1];
+      const client = { __authenticated: true, send: sinon.stub(), close: sinon.stub() } as unknown as MockClient;
+
+      await server.onMessage(Buffer.from(JSON.stringify({ request: 'test-handler', data: {} })), client);
+
+      assert.true(spy.calledOnce, 'handler.server called for kebab-case request');
+      server.reset();
+    });
+
+    test('dispatches camelCase request directly (backward compat)', async function (assert) {
+      const server = new SocketServer();
+      server.encryptionEnabled = false;
+      const spy = sinon.spy();
+      server.handlers = {
+        testHandler: { server: spy, constructor: { skipAuth: false } } as unknown as typeof server.handlers[string],
+      };
+
+      type MockClient = Parameters<typeof server.onMessage>[1];
+      const client = { __authenticated: true, send: sinon.stub(), close: sinon.stub() } as unknown as MockClient;
+
+      await server.onMessage(Buffer.from(JSON.stringify({ request: 'testHandler', data: {} })), client);
+
+      assert.true(spy.calledOnce, 'handler.server called for camelCase request');
+      server.reset();
+    });
+
+    test('dispatches single-word request without regression', async function (assert) {
+      const server = new SocketServer();
+      server.encryptionEnabled = false;
+      const spy = sinon.spy();
+      server.handlers = {
+        echo: { server: spy, constructor: { skipAuth: false } } as unknown as typeof server.handlers[string],
+      };
+
+      type MockClient = Parameters<typeof server.onMessage>[1];
+      const client = { __authenticated: true, send: sinon.stub(), close: sinon.stub() } as unknown as MockClient;
+
+      await server.onMessage(Buffer.from(JSON.stringify({ request: 'echo', data: {} })), client);
+
+      assert.true(spy.calledOnce, 'handler.server called for single-word request');
+      server.reset();
+    });
+
+    test('does not dispatch nonExistent request', async function (assert) {
+      const server = new SocketServer();
+      server.encryptionEnabled = false;
+      const spy = sinon.spy();
+      server.handlers = {
+        echo: { server: spy, constructor: { skipAuth: false } } as unknown as typeof server.handlers[string],
+      };
+
+      type MockClient = Parameters<typeof server.onMessage>[1];
+      const client = { __authenticated: true, send: sinon.stub(), close: sinon.stub() } as unknown as MockClient;
+
+      await server.onMessage(Buffer.from(JSON.stringify({ request: 'nonExistent', data: {} })), client);
+
+      assert.false(spy.called, 'handler.server not called for unknown request');
+      server.reset();
+    });
+  });
 });

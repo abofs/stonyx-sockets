@@ -410,4 +410,62 @@ module('[Unit] SocketClient', function (hooks) {
     assert.false(connectStub.called, 'connect() not called in test mode');
     client.reset();
   });
+
+  module('camelCase dispatch normalization (#37)', function () {
+    test('dispatches kebab-case request to camelCased handler', function (assert) {
+      const client = new SocketClient();
+      client.encryptionEnabled = false;
+      const spy = sinon.spy();
+      client.handlers = {
+        testHandler: { client: spy } as unknown as typeof client.handlers[string],
+      };
+
+      client.onMessage(Buffer.from(JSON.stringify({ request: 'test-handler', response: 'ok' })));
+
+      assert.true(spy.calledOnce, 'handler.client called for kebab-case request');
+      client.reset();
+    });
+
+    test('dispatches camelCase request directly (backward compat)', function (assert) {
+      const client = new SocketClient();
+      client.encryptionEnabled = false;
+      const spy = sinon.spy();
+      client.handlers = {
+        testHandler: { client: spy } as unknown as typeof client.handlers[string],
+      };
+
+      client.onMessage(Buffer.from(JSON.stringify({ request: 'testHandler', response: 'ok' })));
+
+      assert.true(spy.calledOnce, 'handler.client called for camelCase request');
+      client.reset();
+    });
+
+    test('dispatches single-word request without regression', function (assert) {
+      const client = new SocketClient();
+      client.encryptionEnabled = false;
+      const spy = sinon.spy();
+      client.handlers = {
+        echo: { client: spy } as unknown as typeof client.handlers[string],
+      };
+
+      client.onMessage(Buffer.from(JSON.stringify({ request: 'echo', response: 'pong' })));
+
+      assert.true(spy.calledOnce, 'handler.client called for single-word request');
+      client.reset();
+    });
+
+    test('does not dispatch nonExistent request', function (assert) {
+      const client = new SocketClient();
+      client.encryptionEnabled = false;
+      const spy = sinon.spy();
+      client.handlers = {
+        echo: { client: spy } as unknown as typeof client.handlers[string],
+      };
+
+      client.onMessage(Buffer.from(JSON.stringify({ request: 'nonExistent', response: 'x' })));
+
+      assert.false(spy.called, 'handler.client not called for unknown request');
+      client.reset();
+    });
+  });
 });

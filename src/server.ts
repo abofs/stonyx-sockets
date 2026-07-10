@@ -2,6 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import config from 'stonyx/config';
 import log from 'stonyx/log';
 import { forEachFileImport } from '@stonyx/utils/file';
+import { kebabCaseToCamelCase } from '@stonyx/utils/string';
 import { encrypt, decrypt, deriveKey, generateSessionKey } from './encryption.js';
 
 interface SocketMessage {
@@ -125,7 +126,7 @@ export default class SocketServer {
         return;
       }
 
-      const handler = this.handlers[request];
+      const handler = this.handlers[request] ?? this.handlers[kebabCaseToCamelCase(request)];
 
       if (!handler) {
         log.socket(`Invalid request received: ${request}`);
