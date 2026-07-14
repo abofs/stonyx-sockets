@@ -47,6 +47,15 @@ export default class SocketClient {
     await this.discoverHandlers();
 
     const { encryption, authKey } = config.sockets;
+
+    if (encryption === undefined) {
+      throw new Error(
+        'SocketClient: config.sockets.encryption is undefined — the @stonyx/sockets module ' +
+        'config was not merged. Refusing to connect (would send cleartext). Ensure Stonyx has ' +
+        'finished loading modules before constructing a SocketClient.'
+      );
+    }
+
     this.encryptionEnabled = encryption === 'true' || encryption === true;
 
     if (this.encryptionEnabled) {
@@ -60,6 +69,13 @@ export default class SocketClient {
 
   async discoverHandlers(): Promise<void> {
     const { handlerDir } = config.sockets;
+
+    if (handlerDir === undefined) {
+      throw new Error(
+        'SocketClient: config.sockets.handlerDir is undefined — the @stonyx/sockets module ' +
+        'config was not merged. Ensure Stonyx has finished loading modules before constructing a SocketClient.'
+      );
+    }
 
     await forEachFileImport(handlerDir, (HandlerClassUntyped: unknown, { name }) => {
       const HandlerClass = HandlerClassUntyped as new () => HandlerInstance;

@@ -411,6 +411,96 @@ module('[Unit] SocketClient', function (hooks) {
     client.reset();
   });
 
+  module('fail-closed config guards (#39)', function (guardHooks) {
+    let originalSockets: typeof config.sockets;
+
+    guardHooks.beforeEach(function () {
+      originalSockets = config.sockets;
+    });
+
+    guardHooks.afterEach(function () {
+      (config as any).sockets = originalSockets;
+    });
+
+    test('init() throws when config.sockets.encryption is undefined', async function (assert) {
+      const client = new SocketClient();
+      (config as any).sockets = { handlerDir: '/some/path', encryption: undefined };
+
+      try {
+        await client.init();
+        assert.ok(false, 'init() should have thrown');
+      } catch (err) {
+        assert.ok(
+          /encryption is undefined/.test((err as Error).message),
+          'throws descriptive error when encryption is undefined'
+        );
+      }
+      client.reset();
+    });
+
+    test('init() throws when config.sockets.handlerDir is undefined', async function (assert) {
+      const client = new SocketClient();
+      (config as any).sockets = { handlerDir: undefined, encryption: false };
+
+      try {
+        await client.init();
+        assert.ok(false, 'init() should have thrown');
+      } catch (err) {
+        assert.ok(
+          /handlerDir is undefined/.test((err as Error).message),
+          'throws descriptive error when handlerDir is undefined'
+        );
+      }
+      client.reset();
+    });
+
+    test('init() does not throw when encryption is explicitly false', async function (assert) {
+      const client = new SocketClient();
+      sinon.stub(client, 'discoverHandlers').resolves();
+
+      (config as any).sockets = { ...originalSockets, encryption: false, handlerDir: '/some/path' };
+
+      try {
+        await client.init();
+        assert.ok(true, 'guard did not throw for encryption=false');
+      } catch (err) {
+        const msg = (err as Error).message;
+        assert.notOk(
+          /encryption is undefined/.test(msg),
+          'error is not about encryption being undefined'
+        );
+        assert.notOk(
+          /handlerDir is undefined/.test(msg),
+          'error is not about handlerDir being undefined'
+        );
+      }
+      client.reset();
+    });
+
+    test('init() does not throw when encryption is explicitly true', async function (assert) {
+      const client = new SocketClient();
+      sinon.stub(client, 'discoverHandlers').resolves();
+
+      (config as any).sockets = { ...originalSockets, encryption: true, authKey: 'test-key', handlerDir: '/some/path' };
+
+      try {
+        await client.init();
+        assert.ok(true, 'guard did not throw for encryption=true');
+      } catch (err) {
+        const msg = (err as Error).message;
+        assert.notOk(
+          /encryption is undefined/.test(msg),
+          'error is not about encryption being undefined'
+        );
+        assert.notOk(
+          /handlerDir is undefined/.test(msg),
+          'error is not about handlerDir being undefined'
+        );
+      }
+      client.reset();
+    });
+  });
+
   module('camelCase dispatch normalization (#37)', function () {
     test('dispatches kebab-case request to camelCased handler', function (assert) {
       const client = new SocketClient();

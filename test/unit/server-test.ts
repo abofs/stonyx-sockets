@@ -1,5 +1,6 @@
 import QUnit from 'qunit';
 import sinon from 'sinon';
+import config from 'stonyx/config';
 import SocketServer from '../../src/server.js';
 import log from 'stonyx/log';
 
@@ -205,6 +206,102 @@ module('[Unit] SocketServer', function (hooks) {
     assert.false(result);
     assert.false((client.send as unknown as { called: boolean }).called);
     server.reset();
+  });
+
+  module('fail-closed config guards (#39)', function (guardHooks) {
+    let originalSockets: typeof config.sockets;
+
+    guardHooks.beforeEach(function () {
+      originalSockets = config.sockets;
+    });
+
+    guardHooks.afterEach(function () {
+      (config as any).sockets = originalSockets;
+    });
+
+    test('init() throws when config.sockets.encryption is undefined', async function (assert) {
+      const server = new SocketServer();
+      server.handlers = { auth: { server() { return 'success'; } } } as unknown as typeof server.handlers;
+      sinon.stub(server, 'discoverHandlers').resolves();
+
+      (config as any).sockets = { logColor: 'white', logMethod: 'socket', encryption: undefined, port: 0 };
+
+      try {
+        await server.init();
+        assert.ok(false, 'init() should have thrown');
+      } catch (err) {
+        assert.ok(
+          /encryption is undefined/.test((err as Error).message),
+          'throws descriptive error when encryption is undefined'
+        );
+      }
+      server.reset();
+    });
+
+    test('init() throws when config.sockets.handlerDir is undefined', async function (assert) {
+      const server = new SocketServer();
+
+      (config as any).sockets = { logColor: 'white', logMethod: 'socket', handlerDir: undefined, encryption: false };
+
+      try {
+        await server.init();
+        assert.ok(false, 'init() should have thrown');
+      } catch (err) {
+        assert.ok(
+          /handlerDir is undefined/.test((err as Error).message),
+          'throws descriptive error when handlerDir is undefined'
+        );
+      }
+      server.reset();
+    });
+
+    test('init() does not throw when encryption is explicitly false', async function (assert) {
+      const server = new SocketServer();
+      server.handlers = { auth: { server() { return 'success'; } } } as unknown as typeof server.handlers;
+      sinon.stub(server, 'discoverHandlers').resolves();
+
+      (config as any).sockets = { ...originalSockets, logColor: 'white', logMethod: 'socket', encryption: false, port: 0 };
+
+      try {
+        await server.init();
+        assert.ok(true, 'guard did not throw for encryption=false');
+      } catch (err) {
+        const msg = (err as Error).message;
+        assert.notOk(
+          /encryption is undefined/.test(msg),
+          'error is not about encryption being undefined'
+        );
+        assert.notOk(
+          /handlerDir is undefined/.test(msg),
+          'error is not about handlerDir being undefined'
+        );
+      }
+      server.reset();
+    });
+
+    test('init() does not throw when encryption is explicitly true', async function (assert) {
+      const server = new SocketServer();
+      server.handlers = { auth: { server() { return 'success'; } } } as unknown as typeof server.handlers;
+      sinon.stub(server, 'discoverHandlers').resolves();
+
+      (config as any).sockets = { ...originalSockets, logColor: 'white', logMethod: 'socket', encryption: true, authKey: 'test-key', port: 0 };
+
+      try {
+        await server.init();
+        assert.ok(true, 'guard did not throw for encryption=true');
+      } catch (err) {
+        const msg = (err as Error).message;
+        assert.notOk(
+          /encryption is undefined/.test(msg),
+          'error is not about encryption being undefined'
+        );
+        assert.notOk(
+          /handlerDir is undefined/.test(msg),
+          'error is not about handlerDir being undefined'
+        );
+      }
+      server.reset();
+    });
   });
 
   module('self-registers log type in init() (#29)', function (innerHooks) {
