@@ -69,11 +69,49 @@ module('[Unit] SocketClient', function (hooks) {
 
   test('close() sets _intentionalClose flag', function (assert) {
     const client = new SocketClient();
-    client.socket = { close: sinon.stub() } as unknown as typeof client.socket;
+    client.socket = { close: sinon.stub(), removeAllListeners: sinon.stub(), on: sinon.stub(), terminate: sinon.stub() } as unknown as typeof client.socket;
 
     client.close();
 
     assert.true(client._intentionalClose);
+    client.reset();
+  });
+
+  test('close() calls removeAllListeners + terminate and nulls socket (#41)', function (assert) {
+    const client = new SocketClient();
+    const removeAllListenersStub = sinon.stub();
+    const terminateStub = sinon.stub();
+    client.socket = { close: sinon.stub(), removeAllListeners: removeAllListenersStub, on: sinon.stub(), terminate: terminateStub } as unknown as typeof client.socket;
+
+    client.close();
+
+    assert.true(removeAllListenersStub.calledOnce, 'removeAllListeners called');
+    assert.true(terminateStub.calledOnce, 'terminate called');
+    assert.strictEqual(client.socket, null, 'socket nulled after close');
+    client.reset();
+  });
+
+  test('connect() cleans up existing socket before creating new one (#41)', function (assert) {
+    const client = new SocketClient();
+    const removeAllListenersStub = sinon.stub();
+    const onStub = sinon.stub();
+    const terminateStub = sinon.stub();
+    const oldSocket = { close: sinon.stub(), removeAllListeners: removeAllListenersStub, on: onStub, terminate: terminateStub } as unknown as typeof client.socket;
+    client.socket = oldSocket;
+
+    // connect() will create a real WebSocket; cleanup of the old socket happens synchronously first
+    client.connect().catch(() => {});
+
+    assert.true(removeAllListenersStub.calledOnce, 'removeAllListeners called on old socket');
+    assert.true(terminateStub.calledOnce, 'terminate called on old socket');
+
+    // Safe-close the real WebSocket that connect() just created so reset() doesn't throw
+    if (client.socket && client.socket !== oldSocket) {
+      client.socket.removeAllListeners();
+      client.socket.on('error', () => {});
+      client.socket.terminate();
+      client.socket = null;
+    }
     client.reset();
   });
 
@@ -266,7 +304,7 @@ module('[Unit] SocketClient', function (hooks) {
   test('nextHeartBeat schedules a response timeout after heartbeat is sent (#33)', function (assert) {
     const clock = (sinon as any).useFakeTimers();
     const client = new SocketClient();
-    client.socket = { send: sinon.stub(), close: sinon.stub() } as unknown as typeof client.socket;
+    client.socket = { send: sinon.stub(), close: sinon.stub(), removeAllListeners: sinon.stub(), on: sinon.stub(), terminate: sinon.stub() } as unknown as typeof client.socket;
     client.encryptionEnabled = false;
 
     const { heartBeatInterval } = config.sockets;
@@ -284,7 +322,7 @@ module('[Unit] SocketClient', function (hooks) {
     const clock = (sinon as any).useFakeTimers();
     const client = new SocketClient();
     const closeStub = sinon.stub();
-    client.socket = { send: sinon.stub(), close: closeStub } as unknown as typeof client.socket;
+    client.socket = { send: sinon.stub(), close: closeStub, removeAllListeners: sinon.stub(), on: sinon.stub(), terminate: sinon.stub() } as unknown as typeof client.socket;
     client.encryptionEnabled = false;
 
     const { heartBeatInterval } = config.sockets;
@@ -301,7 +339,7 @@ module('[Unit] SocketClient', function (hooks) {
   test('heartbeat response clears the response timeout (#33)', function (assert) {
     const clock = (sinon as any).useFakeTimers();
     const client = new SocketClient();
-    client.socket = { send: sinon.stub(), close: sinon.stub() } as unknown as typeof client.socket;
+    client.socket = { send: sinon.stub(), close: sinon.stub(), removeAllListeners: sinon.stub(), on: sinon.stub(), terminate: sinon.stub() } as unknown as typeof client.socket;
     client.encryptionEnabled = false;
 
     const { heartBeatInterval } = config.sockets;
@@ -322,7 +360,7 @@ module('[Unit] SocketClient', function (hooks) {
   test('onClose clears the heartbeat response timeout (#33)', function (assert) {
     const clock = (sinon as any).useFakeTimers();
     const client = new SocketClient();
-    client.socket = { send: sinon.stub(), close: sinon.stub() } as unknown as typeof client.socket;
+    client.socket = { send: sinon.stub(), close: sinon.stub(), removeAllListeners: sinon.stub(), on: sinon.stub(), terminate: sinon.stub() } as unknown as typeof client.socket;
     client.encryptionEnabled = false;
     client._intentionalClose = true;
 
@@ -341,7 +379,7 @@ module('[Unit] SocketClient', function (hooks) {
   test('close() clears the heartbeat response timeout (#33)', function (assert) {
     const clock = (sinon as any).useFakeTimers();
     const client = new SocketClient();
-    client.socket = { send: sinon.stub(), close: sinon.stub() } as unknown as typeof client.socket;
+    client.socket = { send: sinon.stub(), close: sinon.stub(), removeAllListeners: sinon.stub(), on: sinon.stub(), terminate: sinon.stub() } as unknown as typeof client.socket;
     client.encryptionEnabled = false;
 
     const { heartBeatInterval } = config.sockets;
@@ -360,7 +398,7 @@ module('[Unit] SocketClient', function (hooks) {
     const clock = (sinon as any).useFakeTimers();
     const client = new SocketClient();
     const sendStub = sinon.stub();
-    client.socket = { send: sendStub, close: sinon.stub() } as unknown as typeof client.socket;
+    client.socket = { send: sendStub, close: sinon.stub(), removeAllListeners: sinon.stub(), on: sinon.stub(), terminate: sinon.stub() } as unknown as typeof client.socket;
     client.encryptionEnabled = false;
 
     const { heartBeatInterval } = config.sockets;
