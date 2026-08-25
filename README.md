@@ -232,7 +232,7 @@ Configuration is read from `stonyx/config` under `sockets`:
 | `new SocketClient()` | Singleton constructor |
 | `async init()` | Discover handlers, connect, authenticate |
 | `send(payload)` | Send a message to the server |
-| `close()` | Close the connection |
+| `close()` | Forcefully tear down the socket (remove listeners, terminate, null) |
 | `reconnect()` | Reconnect (max 5 retries) |
 | `reset()` | Close + clear all state (for testing) |
 
