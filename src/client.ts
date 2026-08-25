@@ -89,6 +89,12 @@ export default class SocketClient {
   }
 
   async connect(): Promise<void> {
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.on('error', () => {});
+      this.socket.terminate();
+      this.socket = null;
+    }
     if (this.sessionKey) log.socket('Clearing stale sessionKey');
     this.sessionKey = null;
     return new Promise<void>((resolve, reject) => {
@@ -205,7 +211,12 @@ export default class SocketClient {
     if (this._heartBeatTimer) clearTimeout(this._heartBeatTimer);
     if (this._heartBeatResponseTimer) clearTimeout(this._heartBeatResponseTimer);
     this._heartBeatResponseTimer = null;
-    if (this.socket) this.socket.close();
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.on('error', () => {});
+      this.socket.terminate();
+      this.socket = null;
+    }
   }
 
   getReconnectDelay(): number {

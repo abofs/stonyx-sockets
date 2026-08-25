@@ -73,6 +73,7 @@ constructor() {
    - Sets `instance._clientRef = this` for access to the client within handlers
 2. **Configure encryption** — if enabled, derives global key from `authKey`
 3. **connect()** — returns Promise that resolves after auth completes
+   - If an existing socket is present, cleans it up first (removes listeners, terminates, nulls)
    - Creates WebSocket to `config.sockets.address`
    - On open: sends auth request
    - On auth response: resolves the promise, starts heartbeat

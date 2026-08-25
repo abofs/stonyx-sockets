@@ -146,7 +146,7 @@ Send a message to the server.
 
 #### `close()`
 
-Clears heartbeat timer and closes the WebSocket connection.
+Sets the intentional-close flag, clears heartbeat timers, then forcefully tears down the socket: removes all listeners, attaches a no-op error handler (to prevent uncaught errors during teardown), calls `terminate()`, and nulls the reference.
 
 #### `reconnect()`
 
@@ -164,7 +164,7 @@ Scans handler directory. For each file: instantiates the class, checks for `clie
 
 #### `async connect()`
 
-Creates WebSocket, wires events, sends auth on open. Returns Promise that resolves when auth handler resolves it.
+If an existing socket is present, cleans it up first (removes listeners, terminates, nulls). Then creates a new WebSocket, wires message/close/error/open events, and sends auth on open. Returns Promise that resolves when auth handler resolves it.
 
 #### `onMessage({ data: payload })`
 
