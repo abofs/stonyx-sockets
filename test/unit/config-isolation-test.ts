@@ -222,73 +222,91 @@ module('[Unit] Test-config isolation (#45)', function () {
   });
 
   // ---------------------------------------------------------------------
-  // A1 -- the load-bearing anti-drift guard.
-  // ---------------------------------------------------------------------
-  test('A1 resolved config.sockets deep-equals the pinned object under full ambient pollution', function (assert) {
-    const { sockets } = probe(fullPollution());
-
-    assert.deepEqual(
-      sockets,
-      expectedConfig(2667),
-      'every key of the resolved socket config is pinned by the test environment, with all ten read variables set to sentinels'
-    );
-  });
-
-  test('A2 port is pinned as a strict number and address stays coupled to it', function (assert) {
-    const { sockets } = probe(fullPollution());
-
-    // Unfixed code resolved the STRING "39999" here (`SOCKET_PORT ?? 2667`
-    // never coerces). A loose assert.equal would have accepted "2667"; the
-    // strict typeof check is the part that cannot be satisfied by a string.
-    assert.strictEqual(sockets.port, 2667, 'port is the number 2667');
-    assert.strictEqual(typeof sockets.port, 'number', 'port is typed number, not a string from the environment');
-
-    // `address` is computed from `port` at module-eval in config/environment.js,
-    // so pinning `port` alone does NOT update `address`. They must be pinned
-    // together and stay coupled.
-    assert.strictEqual(sockets.address, 'ws://localhost:2667', 'address is derived from the pinned port and targets localhost');
-  });
-
-  // ---------------------------------------------------------------------
-  // A3 -- the pinned set evaluated AS A SET.
+  // A1 / A2 / A3 -- three independent properties of ONE fully polluted boot.
   //
-  // Asks what combination of pins makes an unpinned value more dangerous
-  // than it would be alone. Here: `encryption: 'false'` (pinned) plus an
-  // unpinned `authKey`/`address` is what put a real credential in cleartext
-  // on the wire. So rather than checking keys individually, this scans the
-  // entire resolved object for ANY surviving ambient value.
+  // These used to call probe(fullPollution()) three times: three identical
+  // Stonyx boots of the same environment for three assertions. A4/A5 twenty
+  // lines below already demonstrate the right idiom -- a nested module whose
+  // hooks.before performs the expensive run once. Same file, one idiom now.
+  // Saves two of the suite's subprocess spawns.
   // ---------------------------------------------------------------------
-  test('A3 no ambient sentinel value survives anywhere in the resolved config', function (assert) {
-    const { sockets, redactedFields } = probe(fullPollution());
-    const serialised = JSON.stringify(sockets);
+  module('one fully polluted config probe', function (hooks) {
+    let polluted: ProbeResult;
 
-    for (const [name, sentinel] of Object.entries(POLLUTION)) {
-      // SOCKET_AUTH_KEY is excluded from the string scan ON PURPOSE, and the
-      // exclusion is not a weakening. Its value is redacted before it crosses
-      // the process boundary (see test/helpers/redact.ts), so scanning the
-      // serialised object for that sentinel could no longer fail -- it would be
-      // a vacuous assertion dressed as a real one. The `redactedFields` check
-      // below replaces it and is strictly stronger: it fires for ANY ambient
-      // value in a secret-shaped field, not only the one sentinel this test
-      // happens to set.
-      if (name === 'SOCKET_AUTH_KEY') continue;
+    hooks.before(function () {
+      polluted = probe(fullPollution());
+    });
 
-      assert.notOk(
-        serialised.includes(sentinel),
-        `no value from ${name} (${sentinel}) survives anywhere in the resolved config`
+    // ---------------------------------------------------------------------
+    // A1 -- the load-bearing anti-drift guard.
+    // ---------------------------------------------------------------------
+    test('A1 resolved config.sockets deep-equals the pinned object under full ambient pollution', function (assert) {
+      const { sockets } = polluted;
+
+      assert.deepEqual(
+        sockets,
+        expectedConfig(2667),
+        'every key of the resolved socket config is pinned by the test environment, with all ten read variables set to sentinels'
       );
-    }
+    });
 
-    assert.deepEqual(
-      redactedFields,
-      [],
-      'no secret-shaped field held an ambient value -- the probe had nothing to redact'
-    );
+    test('A2 port is pinned as a strict number and address stays coupled to it', function (assert) {
+      const { sockets } = polluted;
 
-    // The set property, stated directly: with encryption pinned off, anything
-    // in this object is something the suite would put on the wire in cleartext.
-    assert.strictEqual(sockets.encryption, 'false', 'encryption is pinned off for the suite, so nothing above may be ambient');
-    assert.strictEqual(sockets.authKey, 'TEST_AUTH_KEY', 'the credential the suite transmits is a test literal, never an ambient secret');
+      // Unfixed code resolved the STRING "39999" here (`SOCKET_PORT ?? 2667`
+      // never coerces). A loose assert.equal would have accepted "2667"; the
+      // strict typeof check is the part that cannot be satisfied by a string.
+      assert.strictEqual(sockets.port, 2667, 'port is the number 2667');
+      assert.strictEqual(typeof sockets.port, 'number', 'port is typed number, not a string from the environment');
+
+      // `address` is computed from `port` at module-eval in config/environment.js,
+      // so pinning `port` alone does NOT update `address`. They must be pinned
+      // together and stay coupled.
+      assert.strictEqual(sockets.address, 'ws://localhost:2667', 'address is derived from the pinned port and targets localhost');
+    });
+
+    // ---------------------------------------------------------------------
+    // A3 -- the pinned set evaluated AS A SET.
+    //
+    // Asks what combination of pins makes an unpinned value more dangerous
+    // than it would be alone. Here: `encryption: 'false'` (pinned) plus an
+    // unpinned `authKey`/`address` is what put a real credential in cleartext
+    // on the wire. So rather than checking keys individually, this scans the
+    // entire resolved object for ANY surviving ambient value.
+    // ---------------------------------------------------------------------
+    test('A3 no ambient sentinel value survives anywhere in the resolved config', function (assert) {
+      const { sockets, redactedFields } = polluted;
+      const serialised = JSON.stringify(sockets);
+
+      for (const [name, sentinel] of Object.entries(POLLUTION)) {
+        // SOCKET_AUTH_KEY is excluded from the string scan ON PURPOSE, and the
+        // exclusion is not a weakening. Its value is redacted before it crosses
+        // the process boundary (see test/helpers/redact.ts), so scanning the
+        // serialised object for that sentinel could no longer fail -- it would be
+        // a vacuous assertion dressed as a real one. The `redactedFields` check
+        // below replaces it and is strictly stronger: it fires for ANY ambient
+        // value in a secret-shaped field, not only the one sentinel this test
+        // happens to set.
+        if (name === 'SOCKET_AUTH_KEY') continue;
+
+        assert.notOk(
+          serialised.includes(sentinel),
+          `no value from ${name} (${sentinel}) survives anywhere in the resolved config`
+        );
+      }
+
+      assert.deepEqual(
+        redactedFields,
+        [],
+        'no secret-shaped field held an ambient value -- the probe had nothing to redact'
+      );
+
+      // The set property, stated directly: with encryption pinned off, anything
+      // in this object is something the suite would put on the wire in cleartext.
+      assert.strictEqual(sockets.encryption, 'false', 'encryption is pinned off for the suite, so nothing above may be ambient');
+      assert.strictEqual(sockets.authKey, 'TEST_AUTH_KEY', 'the credential the suite transmits is a test literal, never an ambient secret');
+    });
+
   });
 
   // ---------------------------------------------------------------------
