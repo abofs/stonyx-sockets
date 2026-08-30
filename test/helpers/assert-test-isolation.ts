@@ -26,8 +26,36 @@
 // single test file. It is fail-closed: it throws. `pnpm test` already runs
 // `tsc -p tsconfig.test.json` first, and `TestSocketsConfig` catches pin
 // *removal* at build time (TS2741) -- that is a real mitigation and it stays,
-// but it does not catch a missing override file, an unpinned eleventh read, or
-// a direct `qunit` invocation. This does.
+// but it does not catch a missing override file or an unpinned eleventh read.
+// This does. Nor is the build-time mitigation robust on its own: removing the
+// `address` pin AND its `TestSocketsConfig` field typechecks clean, and that is
+// the natural shape of the edit, because the field is the line the compiler
+// complains about.
+//
+// WHAT THIS GUARD DOES NOT COVER, STATED PLAINLY
+// --------------------------------------------------------------------------
+// It is LOADER-SCOPED. It runs from `test/setup.ts`, so it covers exactly the
+// bootstraps that import it: `pnpm test`, which is CI, and any invocation
+// passing `--import ./test/setup.ts`.
+//
+// It does NOT cover a bootstrap that does not load `test/setup.ts` -- a direct
+// `qunit` invocation, or `npx stonyx test`, which runs stonyx's own
+// `cli/test-setup.js` instead. An earlier version of this comment claimed a
+// direct `qunit` invocation was caught. It is not, and the claim was measured
+// false on this tree: `node --import tsx/esm --import
+// ./node_modules/stonyx/dist/cli/test-setup.js node_modules/qunit/bin/qunit.js
+// test/unit/client-test.ts` made one TCP connection to the ambient host, sent a
+// cleartext auth frame, and hung until it was killed at 60s -- no guard, no
+// verdict. `.claude/testing.md` documented that bypass correctly while this
+// file denied it; the two now agree, and `.claude/testing.md` is where the
+// bootstrap comparison lives.
+//
+// What those paths DO still get is the pin itself: `Stonyx.start()` merges
+// `test/config/environment.ts` under NODE_ENV=test regardless of bootstrap. So
+// the un-guarded paths are safe while the pins are intact, and un-guarded
+// exactly when they are not -- which is why the pin's own drift guards (A1,
+// A12, A14) are not redundant with this file. A16 machine-checks that this
+// guard has exactly one caller, so the scope claim above cannot quietly drift.
 //
 // SCOPE: this fixes THIS PACKAGE's exposure. The framework-level silent swallow
 // is abofs/stonyx#86 and is not waited on.

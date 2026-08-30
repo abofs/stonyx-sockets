@@ -56,7 +56,17 @@
 //     PUBLISHED, so any downstream consumer running their own suite under
 //     NODE_ENV=test would have their socket config silently reset by us.
 //   - Not `env -u` in the test script: a blocklist stops covering any variable
-//     added later, and does not protect a direct qunit invocation.
+//     added later, and covers only the one invocation it is written into.
+//
+// Being HERE is what makes the pin bootstrap-independent: `Stonyx.start()`
+// merges this file under NODE_ENV=test whatever loader ran, so it holds under
+// `pnpm test`, under `npx stonyx test` and under a direct `qunit` invocation
+// with a stonyx bootstrap. The RUNTIME GUARD does not -- it is loader-scoped to
+// `--import ./test/setup.ts` and those other paths get none of it (measured; see
+// test/helpers/assert-test-isolation.ts and .claude/testing.md). So on the
+// un-guarded paths this file is the only thing standing between the suite and
+// the ambient config, which is why its drift guards are load-bearing rather
+// than belt-and-braces.
 //
 // GUARDS, AND WHAT EACH ONE ACTUALLY GUARANTEES
 //   - A1 (test/unit/config-isolation-test.ts) deep-equals the whole resolved

@@ -874,4 +874,96 @@ module('[Unit] Test-config isolation (#45)', function () {
     assert.deepEqual(redactSecrets(expectedConfig(2667)).redactedFields, [], 'the pinned config itself redacts to nothing, so a green A0/A3 still means something');
     assert.deepEqual(redactSecrets(expectedConfig(2667)).value, expectedConfig(2667), 'and passes through unchanged, so A1 is not comparing a mangled object');
   });
+  // ---------------------------------------------------------------------
+  // A16 -- the boot guard's SCOPE, executed rather than claimed.
+  //
+  // `assert-test-isolation.ts` used to say it caught "a direct `qunit`
+  // invocation". It does not: it runs from `test/setup.ts`, and that invocation
+  // is by definition the case where that loader is absent. Measured on this
+  // tree, the bypass leaked a cleartext credential to the ambient host and hung
+  // until it was killed at 60s. `.claude/testing.md` documented the bypass
+  // correctly the whole time, so the repo contradicted itself and the wrong
+  // version was the one sitting next to the code.
+  //
+  // A corrected comment is still just a comment, so the scope claim is machine-
+  // checked here in the two ways that can drift:
+  //   1. the guard has exactly ONE caller, so "loader-scoped to test/setup.ts"
+  //      stays true of the code rather than of the day it was written;
+  //   2. an un-guarded bootstrap really does boot un-isolated -- spawned, not
+  //      asserted from reading.
+  //
+  // If (2) ever goes red because the guard grew to cover more bootstraps, that
+  // is a GOOD red: fix the comment, then this assertion.
+  //
+  // The child only prints resolved config; it opens no socket. Its ambient
+  // address is an RFC 2606 `.invalid` sentinel, so nothing could be dialled
+  // from it even by a regression.
+  // ---------------------------------------------------------------------
+  test('A16 the boot guard is loader-scoped, and an un-guarded bootstrap is proven un-guarded', function (assert) {
+    // (1) Exactly one caller of the throwing form, found by scanning the
+    // tracked source rather than restated -- the same idiom A12/A14 use for the
+    // read-list. THIS FILE is excluded from the scan on purpose: its own source
+    // contains the token being searched for, so including it would make the
+    // scanner match itself and the result would say nothing about the guard.
+    const SELF = 'test/unit/config-isolation-test.ts';
+    const tracked = (spawnSync('git', ['ls-files', 'src', 'test'], { cwd: process.cwd(), encoding: 'utf8' }).stdout ?? '')
+      .split('\n')
+      .filter(file => file.endsWith('.ts') && file !== SELF);
+
+    // Control: `git ls-files` returned a real file list, so the filter below is
+    // not narrowing an empty set down to an empty set.
+    assert.ok(tracked.length > 5, `the tracked .ts source was enumerated (got ${tracked.length} files)`);
+
+    const callers = tracked.filter(file => /\bassertTestIsolation\s*\(/.test(readFileSync(file, 'utf8'))).sort();
+
+    assert.deepEqual(
+      callers,
+      ['test/helpers/assert-test-isolation.ts', 'test/setup.ts'],
+      'the guard is defined in its own file and invoked from test/setup.ts alone -- so it covers exactly the bootstraps that import test/setup.ts, and nothing more'
+    );
+    assert.ok(
+      /--import \.\/test\/setup\.ts/.test(JSON.parse(readFileSync('package.json', 'utf8')).scripts.test),
+      'the `test` script -- which is what CI runs -- goes through the guarded loader'
+    );
+
+    // (2) The limitation itself, executed: stonyx's own bootstrap, which is
+    // what `npx stonyx test` uses and the loader chain a developer lands on the
+    // moment plain `stonyx test` fails on .ts files.
+    const SENTINEL = 'a16-unguarded-bootstrap-sentinel-auth-key';
+    const env: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      SOCKET_ADDRESS: 'ws://a16-unguarded.invalid:9999',
+      SOCKET_AUTH_KEY: SENTINEL,
+    };
+
+    // Deleting NODE_ENV is what makes the boot un-isolated: no override merged,
+    // so the ambient values above are what resolves. Under `pnpm test` the
+    // guard refuses this exact state (A10 measures it at ~160ms).
+    delete env.NODE_ENV;
+
+    const unguarded = spawnSync(
+      process.execPath,
+      ['--import', 'tsx/esm', '--import', './node_modules/stonyx/dist/cli/test-setup.js', 'test/helpers/print-resolved-config.ts'],
+      { cwd: process.cwd(), env, encoding: 'utf8', timeout: 60000 }
+    );
+
+    const output = `${unguarded.stdout ?? ''}${unguarded.stderr ?? ''}`;
+
+    assert.notOk(
+      output.includes('[@stonyx/sockets test isolation] refusing to run'),
+      'a bootstrap that does not import test/setup.ts does NOT run the guard -- this is the documented limitation, not a defect to be fixed here'
+    );
+    assert.ok(
+      output.includes(MARKER),
+      'and it boots all the way to a resolved config, so the limitation is real rather than incidentally masked by an unrelated crash'
+    );
+    assert.ok(
+      output.includes('ws://a16-unguarded.invalid:9999'),
+      'the config it resolved is the AMBIENT one -- this is what the un-guarded path costs, stated as a measurement'
+    );
+
+    // So on that path, redaction in print-resolved-config.ts is the ONLY thing
+    // between an ambient credential and stdout. It holds.
+    assert.notOk(output.includes(SENTINEL), 'the ambient auth key still does not reach stdout -- layer 2 is load-bearing precisely here, where layer 1 is absent');
+  });
 });
