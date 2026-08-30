@@ -107,6 +107,27 @@ function expectedConfig(port: number) {
   };
 }
 
+/**
+ * The SOCKET_* names `config/environment.js` actually destructures from
+ * `process.env`, parsed out of the source rather than restated.
+ *
+ * This is the single source of truth A12 and A14 hold every hand-maintained
+ * copy against: PINNED_ENV_VARS (drives the warning), READ_ENV_VARS and
+ * POLLUTION (drive these guards), and the two config tables in the docs.
+ * Parsing an artefact rather than restating it is the in-repo idiom --
+ * test/unit/publish-surface-test.ts does the same against `npm pack`.
+ */
+function declaredEnvVars(): string[] {
+  const source = readFileSync('config/environment.js', 'utf8');
+  const destructure = /const\s*\{([\s\S]*?)\}\s*=\s*process\.env\s*;/.exec(source);
+
+  return (destructure?.[1] ?? '')
+    .split(',')
+    .map(name => name.trim())
+    .filter(Boolean)
+    .sort();
+}
+
 const MARKER = '__RESOLVED_SOCKETS_CONFIG__';
 const PROBE_ARGS = ['--import', 'tsx/esm', '--import', './test/setup.ts', 'test/helpers/print-resolved-config.ts'];
 
@@ -667,22 +688,15 @@ module('[Unit] Test-config isolation (#45)', function () {
   // test/unit/publish-surface-test.ts does the same against `npm pack`.
   // ---------------------------------------------------------------------
   test('A12 the read-list is derived from config/environment.js and the two hand-maintained copies match it', function (assert) {
-    const source = readFileSync('config/environment.js', 'utf8');
-    const destructure = /const\s*\{([\s\S]*?)\}\s*=\s*process\.env\s*;/.exec(source);
+    const declared = declaredEnvVars();
 
     // Control 1: the parse found the destructure at all. Without this a regex
     // that stopped matching would compare [] against [] further down and this
     // whole test would pass while enforcing nothing.
-    assert.ok(destructure, 'the `= process.env` destructure was located in config/environment.js');
+    assert.ok(declared.length > 0, 'the `= process.env` destructure was located and yielded identifiers');
 
-    const declared = (destructure?.[1] ?? '')
-      .split(',')
-      .map(name => name.trim())
-      .filter(Boolean)
-      .sort();
-
-    // Control 2: it found real names, and specifically one we know is there.
-    assert.ok(declared.length > 0, `the destructure yielded identifiers (got ${declared.length})`);
+    // Control 2: it found a name we know is there, so the parse reflects the
+    // real file rather than having matched something unrelated.
     assert.ok(declared.includes('SOCKET_AUTH_KEY'), 'the parsed list contains SOCKET_AUTH_KEY, so the parse reflects the real file');
 
     // The load-bearing pair. Either one going red means someone added or
@@ -752,5 +766,42 @@ module('[Unit] Test-config isolation (#45)', function () {
       JSON.stringify(sockets).includes('evil.example.com'),
       'no part of the injection string survives anywhere in the resolved config'
     );
+  });
+  // ---------------------------------------------------------------------
+  // A14 -- the PUBLISHED documentation is held to the same read-list.
+  //
+  // package.json `files` is ["dist", "config", "LICENSE.md", "README.md"].
+  // `docs/` is NOT in the tarball; README.md is. The PR that fixed this defect
+  // argued that "a published table short by three is the same bug in
+  // documentation form" -- and then fixed docs/configuration.md while the
+  // actually-published README table stayed short by four (SOCKET_LOG and all
+  // three reconnect variables). Fixing those rows by hand and moving on would
+  // leave exactly the hand-maintained-copy problem A12 exists to end, so the
+  // doc tables are enforced from the same parsed source instead.
+  //
+  // A consumer installing from npm and reading the bundled README is the only
+  // audience for whom this list IS the interface: config/environment.js ships
+  // unchanged and still reads all ten ambient variables.
+  // ---------------------------------------------------------------------
+  test('A14 README.md and docs/configuration.md document exactly the variables config/environment.js reads', function (assert) {
+    const declared = declaredEnvVars();
+
+    // Control: shared with A12 -- if the parse silently returned nothing, the
+    // subset checks below would pass vacuously against any document at all.
+    assert.ok(declared.length > 0, `the destructure yielded identifiers (got ${declared.length})`);
+
+    for (const file of ['README.md', 'docs/configuration.md']) {
+      const text = readFileSync(file, 'utf8');
+      const missing = declared.filter(name => !text.includes(name));
+
+      assert.deepEqual(missing, [], `${file} documents every variable config/environment.js reads`);
+    }
+
+    // README.md is the one that actually ships, so pin that fact rather than
+    // trusting it: if `files` ever drops it, this guard is guarding nothing.
+    const files = JSON.parse(readFileSync('package.json', 'utf8')).files as string[];
+
+    assert.ok(files.includes('README.md'), 'README.md is in package.json `files`, so the table above is the PUBLISHED one');
+    assert.notOk(files.includes('docs'), 'docs/ is NOT published -- consumer-facing config guidance has to live in README.md');
   });
 });
