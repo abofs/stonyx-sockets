@@ -11,7 +11,14 @@
 // before returning. It runs as a `--import` loader, so its
 // top-level-await keeps qunit's test-file loading blocked until
 // Stonyx is fully initialized.
+//
+// It is also where the #45 isolation invariant is ENFORCED rather than merely
+// asserted. `assertTestIsolation` runs here, after config resolves and before
+// qunit loads a single test file, because the two drift scenarios that reopen
+// #45 both hang the suite before it ever reaches
+// `test/unit/config-isolation-test.ts`. See test/helpers/assert-test-isolation.ts.
 import { pathToFileURL } from 'url';
+import { assertTestIsolation } from './helpers/assert-test-isolation.js';
 
 const cwd = process.cwd();
 
@@ -20,3 +27,11 @@ const { default: config } = await import(pathToFileURL(`${cwd}/config/environmen
 
 new Stonyx(config, cwd);
 await Stonyx.ready;
+
+const { default: resolved } = await import('stonyx/config');
+
+assertTestIsolation({
+  sockets: (resolved as Record<string, unknown>).sockets,
+  cwd,
+  nodeEnv: process.env.NODE_ENV,
+});

@@ -111,3 +111,26 @@ export function safeAddress(address: unknown): string {
 
   return LOOPBACK_HOSTS.has(hostname) ? address : '<non-loopback address withheld>';
 }
+
+/**
+ * Render captured wire frames for a failure message.
+ *
+ * The frames a decoy records are auth frames -- `{"request":"auth","data":
+ * {"authKey":"..."}}` -- so an assertion that prints them raw is BLOCKER-2 in a
+ * second location: on a real regression the credential in that frame is the
+ * developer's ambient `SOCKET_AUTH_KEY`. Today the guards displace it with a
+ * sentinel in the child env, but that is a property of the test's env setup
+ * rather than of the rendering, and it is not something a future edit will keep
+ * in mind. Redacting here makes it a property of the rendering.
+ */
+export function redactFrames(frames: readonly string[]): string[] {
+  return frames.map(frame => {
+    try {
+      return JSON.stringify(redactSecrets(JSON.parse(frame)).value);
+    } catch {
+      // Not JSON -- an encrypted or binary frame. Its length is the only thing
+      // safe to report, and it is the only thing an assertion needs.
+      return `<unparseable ${frame.length}-byte frame>`;
+    }
+  });
+}

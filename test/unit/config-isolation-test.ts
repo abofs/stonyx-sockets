@@ -30,9 +30,11 @@
 
 import QUnit from 'qunit';
 import { spawn, spawnSync } from 'child_process';
+import { tmpdir } from 'os';
 import config from 'stonyx/config';
 import { startDecoy, freePort, type Decoy } from '../helpers/decoy-listener.js';
-import { redactSecrets, safeAddress } from '../helpers/redact.js';
+import { redactSecrets, redactFrames, safeAddress } from '../helpers/redact.js';
+import { checkTestIsolation, TEST_CONFIG_RELATIVE_PATH } from '../helpers/assert-test-isolation.js';
 
 const { module, test } = QUnit;
 
@@ -348,7 +350,10 @@ module('[Unit] Test-config isolation (#45)', function () {
 
     test('A4 the integration suite opens zero connections to the foreign host', function (assert) {
       assert.strictEqual(decoy.connections, 0, 'decoy listener accepted no connections from the suite');
-      assert.strictEqual(decoy.frames.length, 0, `decoy listener received no frames (got: ${JSON.stringify(decoy.frames)})`);
+      // Frames are redacted before rendering: on a real regression the auth
+      // frame carries the developer's ambient SOCKET_AUTH_KEY, and a failure
+      // message that prints it is BLOCKER-2 in a second location.
+      assert.strictEqual(decoy.frames.length, 0, `decoy listener received no frames (got: ${JSON.stringify(redactFrames(decoy.frames))})`);
 
       // A suite that connected nowhere at all would also satisfy the above.
       // This pins that it connected to its OWN local server and passed.
@@ -436,5 +441,150 @@ module('[Unit] Test-config isolation (#45)', function () {
 
     // The ambient SOCKET_PORT=39999 sentinel is still ignored.
     assert.notOk(JSON.stringify(sockets).includes('39999'), 'ambient SOCKET_PORT is still ignored when the escape hatch is in use');
+  });
+  // ---------------------------------------------------------------------
+  // A9 / A10 / A11 -- the fail-CLOSED boot guard (#45 CRITICAL).
+  //
+  // A1 is the right assertion but it is a TEST, and tests only run if the
+  // suite reaches them. Measured on the previous head, the two drift scenarios
+  // that reopen #45 both hang the suite before file ordering reaches this
+  // file -- one connection to the ambient host, a cleartext auth frame, killed
+  // at 120s (missing override) and 200s (address pin removed), with no `# fail`
+  // line ever emitted. In CI that reads as a job timeout, not a regression.
+  //
+  // So the invariant is now enforced in `test/setup.ts`, before qunit loads any
+  // test file. A9 covers the guard's branch logic directly; A10/A11 prove it is
+  // actually WIRED IN and fires before a single byte leaves the process.
+  // ---------------------------------------------------------------------
+
+  // A9 is an in-process unit test of a pure function, and deliberately so:
+  // Rule 4's subprocess requirement exists because config resolves once at boot,
+  // so a `beforeEach` mutation is too late to exhibit a resolution defect.
+  // `checkTestIsolation` takes its inputs as arguments and resolves nothing, so
+  // there is no boot to be too late for. The resolution-path coverage is A10/A11.
+  test('A9 the boot guard rejects every un-isolated boot shape it is responsible for', function (assert) {
+    const cwd = process.cwd();
+
+    // Missing override. This is the branch A10/A11 cannot exercise without
+    // moving a tracked file out from under a concurrently running suite, so it
+    // is covered here, on the same code path setup.ts calls.
+    const missing = checkTestIsolation({ sockets: { address: 'ws://localhost:2667' }, cwd: tmpdir(), nodeEnv: 'test' });
+    assert.ok(missing, 'a missing test/config/environment.ts is refused');
+    assert.ok(missing?.includes(TEST_CONFIG_RELATIVE_PATH), 'the message names the file that is missing');
+    assert.ok(missing?.includes('abofs/stonyx#86'), 'the message points at the framework issue for the silent swallow');
+
+    // Not test mode: stonyx never merges the override, so config is ambient.
+    const notTest = checkTestIsolation({ sockets: { address: 'ws://localhost:2667' }, cwd, nodeEnv: undefined });
+    assert.ok(notTest, 'a boot outside NODE_ENV=test is refused even though the address happens to be loopback');
+
+    // The #45 shape itself: a non-loopback address survived into the config.
+    const foreign = checkTestIsolation({ sockets: { address: 'ws://polluted.invalid:9999' }, cwd, nodeEnv: 'test' });
+    assert.ok(foreign, 'a non-loopback address is refused');
+    assert.notOk(
+      foreign?.includes('polluted.invalid'),
+      'the refusal message does NOT name the foreign host -- on a real machine that is the internal address the pin exists to keep out of logs'
+    );
+
+    assert.ok(checkTestIsolation({ sockets: undefined, cwd, nodeEnv: 'test' }), 'a config with no sockets namespace is refused');
+    assert.ok(checkTestIsolation({ sockets: { address: 'ws://localhost:NaN' }, cwd, nodeEnv: 'test' }), 'an unparseable address is refused');
+
+    // The negative control. Without this, every assertion above is satisfied by
+    // a function that returns a string unconditionally.
+    for (const address of ['ws://localhost:2667', 'ws://127.0.0.1:2667', 'ws://[::1]:2667']) {
+      assert.strictEqual(
+        checkTestIsolation({ sockets: { address }, cwd, nodeEnv: 'test' }),
+        null,
+        `a properly isolated boot on ${address} is permitted`
+      );
+    }
+  });
+
+  module('un-isolated boot is refused before anything leaves the process', function (hooks) {
+    // Generous next to the ~160ms the guard actually takes, but small enough
+    // that a regression to the observed 120s/200s hang cannot pass.
+    const BUDGET_MS = 30000;
+
+    let decoy: Decoy;
+    let elapsedMs = 0;
+    let timedOut = false;
+    let exitCode: number | null = null;
+    let output = '';
+
+    hooks.before(async function () {
+      decoy = await startDecoy();
+
+      const env: Record<string, string> = {
+        ...process.env as Record<string, string>,
+        SOCKET_ADDRESS: decoy.address,
+        SOCKET_AUTH_KEY: 'unisolated-sentinel-auth-key',
+      };
+
+      // Deleting NODE_ENV is how this run is made un-isolated WITHOUT touching a
+      // tracked file: stonyx only merges test/config/environment.ts under
+      // NODE_ENV=test, so the child resolves the ambient socket config -- the
+      // same end state as the missing-override scenario, reached safely while
+      // other agents may be running suites over the same checkout family.
+      delete env.NODE_ENV;
+
+      const started = Date.now();
+
+      const run = await new Promise<{ out: string; code: number | null; killed: boolean }>(resolve => {
+        const child = spawn(
+          process.execPath,
+          [
+            '--import', 'tsx/esm',
+            '--import', './test/setup.ts',
+            'node_modules/qunit/bin/qunit.js',
+            // Both files that were observed dialling out. client-test.ts is
+            // listed first because it is the one that actually leaked.
+            'test/unit/client-test.ts',
+            'test/integration/socket-test.ts',
+          ],
+          { cwd: process.cwd(), env }
+        );
+
+        let out = '';
+        child.stdout.on('data', d => { out += d; });
+        child.stderr.on('data', d => { out += d; });
+
+        const timer = setTimeout(() => {
+          child.kill('SIGKILL');
+          resolve({ out, code: null, killed: true });
+        }, BUDGET_MS);
+
+        child.on('close', code => {
+          clearTimeout(timer);
+          resolve({ out, code, killed: false });
+        });
+      });
+
+      elapsedMs = Date.now() - started;
+      timedOut = run.killed;
+      exitCode = run.code;
+      output = run.out;
+    });
+
+    hooks.after(async function () {
+      if (decoy) await decoy.close();
+    });
+
+    test('A10 an un-isolated boot fails fast and loudly instead of hanging', function (assert) {
+      assert.notOk(timedOut, `the run terminated on its own rather than being killed at the ${BUDGET_MS}ms budget`);
+      assert.ok(elapsedMs < BUDGET_MS, `refused in ${elapsedMs}ms, well under the ${BUDGET_MS}ms budget`);
+      assert.notStrictEqual(exitCode, 0, `the un-isolated run exited non-zero (got ${exitCode})`);
+      assert.ok(
+        output.includes('[@stonyx/sockets test isolation] refusing to run'),
+        `the failure names the isolation guard rather than reading as a timeout\n${output.slice(-1500)}`
+      );
+    });
+
+    test('A11 an un-isolated boot makes zero contact with the ambient host', function (assert) {
+      assert.strictEqual(decoy.connections, 0, 'decoy listener accepted no connections');
+      assert.strictEqual(decoy.frames.length, 0, `decoy listener received no frames (got: ${JSON.stringify(redactFrames(decoy.frames))})`);
+      assert.notOk(
+        output.includes('unisolated-sentinel-auth-key'),
+        'the sentinel credential appears nowhere in the run output'
+      );
+    });
   });
 });
