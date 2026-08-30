@@ -2,12 +2,20 @@
 //
 // Defect: `config/environment.js` reads TEN SOCKET_* variables from the ambient
 // environment. `test/config/environment.ts` pinned only five of them, so on any
-// machine exporting SOCKET_ADDRESS / SOCKET_AUTH_KEY the integration suite
-// pointed at a live external host and transmitted the real auth key in
-// cleartext -- the test override pins `encryption: 'false'`, which strips the
-// AES-256-GCM envelope that would otherwise have protected it on the wire.
-// Neither pin alone produces that; the combination does. Hence the pinned set
-// is asserted AS A SET (A1/A3), not key by key.
+// machine exporting SOCKET_ADDRESS / SOCKET_AUTH_KEY the suite pointed at a live
+// external host and transmitted the real auth key in cleartext.
+//
+// The cleartext is NOT a consequence of the `encryption: 'false'` pin, and an
+// earlier version of this header said it was. `SocketClient.encryptionEnabled`
+// is assigned in `init()`, and `test/unit/client-test.ts` calls `connect()`
+// without it, so `send()` takes the unencrypted branch whatever config says.
+// Measured with `encryption` at the package default `'true'`, a 127.0.0.1 decoy
+// still recorded the auth frame as plain UTF-8 JSON. An unpinned address plus an
+// unpinned authKey is sufficient on its own; the `encryption: 'false'` pin
+// widens the exposure to the integration path, it does not create it.
+//
+// The pinned set is still asserted AS A SET (A1/A3) rather than key by key --
+// because any single unpinned read can be the one that matters.
 //
 // WHY EVERY GUARD HERE SPAWNS A SUBPROCESS
 // ----------------------------------------
@@ -289,11 +297,11 @@ module('[Unit] Test-config isolation (#45)', function () {
     // ---------------------------------------------------------------------
     // A3 -- the pinned set evaluated AS A SET.
     //
-    // Asks what combination of pins makes an unpinned value more dangerous
-    // than it would be alone. Here: `encryption: 'false'` (pinned) plus an
-    // unpinned `authKey`/`address` is what put a real credential in cleartext
-    // on the wire. So rather than checking keys individually, this scans the
-    // entire resolved object for ANY surviving ambient value.
+    // Rather than checking keys individually, this scans the entire resolved
+    // object for ANY surviving ambient value, because any one of them can be
+    // the one that matters. An unpinned `address` plus an unpinned `authKey`
+    // already puts a real credential on the wire in cleartext on the unit-test
+    // path, whatever `encryption` resolves to -- see the file header.
     // ---------------------------------------------------------------------
     test('A3 no ambient sentinel value survives anywhere in the resolved config', function (assert) {
       const { sockets, redactedFields } = polluted;
@@ -322,9 +330,11 @@ module('[Unit] Test-config isolation (#45)', function () {
         'no secret-shaped field held an ambient value -- the probe had nothing to redact'
       );
 
-      // The set property, stated directly: with encryption pinned off, anything
-      // in this object is something the suite would put on the wire in cleartext.
-      assert.strictEqual(sockets.encryption, 'false', 'encryption is pinned off for the suite, so nothing above may be ambient');
+      // The set property, stated directly. Note what this does NOT claim:
+      // pinning encryption back on would not make an ambient authKey safe,
+      // because the unit-test path never init()s the client and so never
+      // encrypts at all.
+      assert.strictEqual(sockets.encryption, 'false', 'encryption is pinned off for the suite');
       assert.strictEqual(sockets.authKey, 'TEST_AUTH_KEY', 'the credential the suite transmits is a test literal, never an ambient secret');
     });
 

@@ -8,12 +8,30 @@
 // --------------------------------------------------------------
 // `config/environment.js` reads ten SOCKET_* variables. This file used to pin
 // five. On a developer machine exporting SOCKET_ADDRESS and SOCKET_AUTH_KEY,
-// the integration suite dialled a live external host and sent the real
-// 64-character auth key to it -- in cleartext, because the `encryption:'false'`
-// pin below strips the AES-256-GCM envelope that would otherwise have wrapped
-// it. Either pin alone would have prevented that; the combination produced it.
-// So the invariant is over the SET, not over individual keys: nothing in the
-// resolved socket config may come from the ambient environment.
+// the suite dialled a live external host and sent the real 64-character auth
+// key to it, in cleartext.
+//
+// THE CLEARTEXT IS NOT CAUSED BY THE `encryption:'false'` PIN BELOW. An earlier
+// version of this comment said it was, and that the combination of pins was
+// required. Measured, that is wrong: `SocketClient.encryptionEnabled` is
+// assigned in `init()`, and `test/unit/client-test.ts` calls `connect()` on a
+// client that was never `init()`ed, so the flag stays false and `send()` takes
+// the unencrypted branch regardless of config. With `encryption` left at the
+// package default `'true'`, a 127.0.0.1 decoy still recorded the auth frame as
+// plain UTF-8 JSON:
+//
+//   __RESOLVED_SOCKETS_CONFIG__{... "encryption":"true" ...}
+//   decoy frames: ["{\"request\":\"auth\",\"data\":{\"authKey\":\"<sentinel>\"}}"]
+//
+// So an unpinned `address` plus an unpinned `authKey` is BY ITSELF sufficient
+// for cleartext credential disclosure. The `encryption:'false'` pin additionally
+// strips the AES-256-GCM envelope on the integration path, where the client is
+// init()ed -- it widens the exposure, it does not create it.
+//
+// The invariant is still over the SET, not over individual keys -- nothing in
+// the resolved socket config may come from the ambient environment -- but the
+// reason is that ANY single unpinned read can be the one that matters, not that
+// one specific pair has to combine.
 //
 // Two of the five that were unpinned were inert only by luck:
 //   - `reconnectMaxDelay` is unread only because `maxReconnectAttempts` is
@@ -40,8 +58,17 @@
 //   - Not `env -u` in the test script: a blocklist stops covering any variable
 //     added later, and does not protect a direct qunit invocation.
 //
-// Guarded by test/unit/config-isolation-test.ts. A1 there deep-equals the whole
-// resolved object, so this list cannot silently drift from the read list again.
+// GUARDS, AND WHAT EACH ONE ACTUALLY GUARANTEES
+//   - A1 (test/unit/config-isolation-test.ts) deep-equals the whole resolved
+//     object, so a NEW CONFIG KEY cannot go unpinned. It does NOT catch a new
+//     environment read feeding an EXISTING key -- that adds no key and resolves
+//     identically on both sides. A12 covers that by parsing the destructure out
+//     of config/environment.js and holding PINNED_ENV_VARS, READ_ENV_VARS and
+//     POLLUTION against it.
+//   - Both are TESTS, so both only run if the suite gets that far. It did not:
+//     a missing override or an unpinned address hung the suite before file
+//     ordering reached them. test/helpers/assert-test-isolation.ts, called from
+//     test/setup.ts, is what makes that case fail closed.
 
 interface TestSocketsConfig {
   port: number;

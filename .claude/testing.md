@@ -3,14 +3,29 @@
 ## Running Tests
 
 ```bash
-# From the stonyx-sockets directory
-npx stonyx test
-
-# Or via pnpm
 pnpm test
 ```
 
-**Important:** Use `stonyx test`, not plain `qunit`. The Stonyx test runner bootstraps the framework (config, logging, module init) before running QUnit. Without it, `stonyx/config` and `log.socket()` won't be available.
+**Use `pnpm test`.** It is what CI runs, and it is not interchangeable with
+`npx stonyx test` — an earlier version of this file presented them as
+alternatives and that was wrong:
+
+| | bootstrap | notes |
+|---|---|---|
+| `pnpm test` | `--import ./test/setup.ts` (repo-local) | builds, then runs qunit. **This is CI.** |
+| `npx stonyx test` | `stonyx/dist/cli/test-setup.js` | bypasses `test/setup.ts` entirely |
+
+`test/setup.ts` exists because stonyx's own test-setup does not await
+`Stonyx.ready`, so QUnit loads test files before `Stonyx.initialized` flips and
+integration tests hit the "not initialized yet" guard. It is also where the #45
+isolation guard runs. `npx stonyx test` gets neither.
+
+What both paths do share: the config pin itself. Both resolve config through
+`Stonyx.start()`'s merge of `test/config/environment.ts`, so the pin holds under
+either. Only the guards are single-path.
+
+Plain `qunit` with no bootstrap at all does not work — `stonyx/config` and
+`log.socket()` are unavailable without it.
 
 ## Test Structure
 
@@ -41,11 +56,17 @@ Files under `test/helpers/` are shared helpers, not suites — the runner glob i
 
 ## Test Config
 
+Abridged — see [`docs/configuration.md`](../docs/configuration.md#test-config-override)
+for the full file, which also exports `PINNED_ENV_VARS`, the `resolveTestPort`
+validator and the ignored-variable warning.
+
 ```typescript
 // test/config/environment.ts
-export default {
+const port = resolveTestPort(TEST_SOCKET_PORT);   // validated; falls back to 2667
+
+const config: TestEnvironmentConfig = {
   sockets: {
-    port,                        // 2667, or TEST_SOCKET_PORT if set
+    port,
     address: `ws://localhost:${port}`,
     authKey: 'TEST_AUTH_KEY',
     heartBeatInterval: 60000,    // Long interval so timers don't fire during tests
@@ -56,7 +77,9 @@ export default {
     reconnectMaxDelay: 60000,
     maxReconnectAttempts: 0,     // No reconnect storms during tests
   }
-}
+};
+
+export default config;
 ```
 
 `handlerDir` points into `dist-test/`, not `test/` — handlers are discovered as
@@ -65,45 +88,55 @@ compiled JS produced by `pnpm build:test`.
 ## Test Isolation
 
 **Every variable `config/environment.js` reads must be pinned in
-`test/config/environment.ts`.** All ten are, and that is a hard invariant, not a
-style preference.
+`test/config/environment.ts`.** All ten are, and that is a hard invariant.
 
-It was not always true. `config/environment.js` reads ten `SOCKET_*` variables
-and the test override pinned five. On a developer machine exporting
-`SOCKET_ADDRESS` and `SOCKET_AUTH_KEY` — which is a normal thing for a machine
-that talks to a socket server to have — `pnpm test` pointed the integration
-client at that live external host and sent the real auth key to it. In
-cleartext, because the `encryption: 'false'` pin here strips the AES-256-GCM
-envelope that would otherwise have wrapped the credential on the wire. Either
-pin alone would have prevented that; the combination produced it. CI never saw
-it, because CI has no such variables set (#45).
+The incident narrative, the measured evidence, what each guard does and does not
+guarantee, and the consumer-facing guidance all live in **one** place:
+[`docs/configuration.md` → Why all ten keys are pinned](../docs/configuration.md#why-all-ten-keys-are-pinned).
+Do not restate it here — this file previously carried a paraphrase that had
+already drifted from the `docs/` copy before it merged, which is this module's
+own bug one layer up.
 
-Rules that follow from it:
+What to do, when working in this repo:
 
 - **Adding a key to `config/environment.js` means adding it to
-  `test/config/environment.ts` in the same change.** `test/unit/config-isolation-test.ts`
-  deep-equals the entire resolved `config.sockets`, so an unpinned new key fails
-  the suite rather than quietly becoming ambient.
+  `test/config/environment.ts` in the same change.** A1 deep-equals the entire
+  resolved `config.sockets`, so an unpinned new key fails the suite.
+- **Adding an environment *read* means adding the variable to
+  `PINNED_ENV_VARS` too**, even if it feeds an existing key. A1 will not catch
+  that one; A12 will, by parsing the destructure out of `config/environment.js`.
+- **Adding a row to either config table** — `README.md` (published) or
+  `docs/configuration.md` — is enforced by A14 against the same parse.
 - **`address` and `port` must stay coupled.** `address` is computed from `port`
   at module-eval time in `config/environment.js`, so pinning `port` alone does
   *not* move `address`.
 - **Assertions about this must spawn a subprocess.** Config resolves once, in
   `Stonyx.start()`, before qunit loads a single test file — setting
   `process.env` from a `beforeEach` is too late and passes against broken code.
+  A0, A9 and A13's range cases are the labelled in-process exceptions.
 - **Never point a test at a host you do not control.** The isolation suite uses
   a decoy listener bound to `127.0.0.1` on an ephemeral port.
+- **Never render a resolved config or a captured frame raw in an assertion
+  message.** Use `test/helpers/redact.ts`; a guard whose red state discloses the
+  credential it protects is worse than no guard.
 
-When ambient `SOCKET_*` variables are present they are ignored, and the suite
-prints one warning naming exactly which. It warns rather than failing, so a
-developer with these variables exported can still run the suite.
+When a **watched** variable is present it is ignored and the suite prints one
+warning naming exactly which. `SOCKET_AGENT_AUTH_KEY` matches `SOCKET_*` but is
+deliberately not watched — nothing in this package reads it — so its presence
+produces no warning, and that is correct rather than a broken guard.
+
+If the suite refuses to start with `[@stonyx/sockets test isolation] refusing to
+run: ...`, that is `test/setup.ts` failing closed: the override file is missing,
+`NODE_ENV` is not `test`, or the resolved address is not loopback. Fix the cause
+— it means the suite was about to run against ambient socket config.
 
 ## Sample Handlers
 
-### auth.js
+### auth.ts
 
 Validates `authKey` against config, registers client in `clientMap`, resolves the connection promise. Has `static skipAuth = true`.
 
-### echo.js
+### echo.ts
 
 Server returns whatever data it receives. Client stores the response on `client._lastEchoResponse` for test assertions.
 
@@ -183,7 +216,7 @@ Key patterns:
 ## Common Gotchas
 
 - **Process hangs after tests:** Usually caused by un-cleared heartbeat timers or unclosed WebSocket servers. Ensure `reset()` is called for all instances.
-- **`log.socket is not a function`:** Running `qunit` directly instead of `stonyx test`. The Stonyx bootstrap is required.
-- **`moduleClass is not a constructor`:** The `src/main.js` default export must be a class (not just named exports). The `Sockets` class serves as the Stonyx auto-init entry point.
+- **`log.socket is not a function`:** Running `qunit` with no bootstrap. Use `pnpm test`, which supplies `--import ./test/setup.ts`.
+- **`moduleClass is not a constructor`:** The `src/main.ts` default export must be a class (not just named exports). The `Sockets` class serves as the Stonyx auto-init entry point.
 - **Port conflicts:** Integration tests use port 2667 by default. If tests run in parallel with other services, override **`TEST_SOCKET_PORT`** — not `SOCKET_PORT`, which the test config deliberately ignores (see Test Isolation). `TEST_SOCKET_PORT` moves the port and keeps `address` coupled to it; it can never move the suite off `localhost`.
 - **`Ignoring ambient socket environment variable(s): ...`:** Expected, not an error. You have `SOCKET_*` variables exported; the suite is pinning over them so it does not reach an external host.
