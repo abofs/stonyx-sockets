@@ -6,15 +6,17 @@
 stonyx-sockets/
 ├── config/environment.js      # Default config, env var overrides
 ├── src/
-│   ├── main.js                # Sockets class (Stonyx entry) + barrel exports
-│   ├── server.js              # SocketServer singleton
-│   ├── client.js              # SocketClient singleton
-│   ├── handler.js             # Base Handler class
-│   └── encryption.js          # AES-256-GCM utilities
+│   ├── main.ts                # Sockets class (Stonyx entry) + barrel exports
+│   ├── server.ts              # SocketServer singleton
+│   ├── client.ts              # SocketClient singleton
+│   ├── handler.ts             # Base Handler class
+│   └── encryption.ts          # AES-256-GCM utilities
 └── test/
-    ├── config/environment.js  # Test config overrides
+    ├── config/environment.ts  # Test config overrides (pins all ten ambient reads)
+    ├── helpers/               # Shared test helpers (not suites; outside the runner glob)
     ├── sample/socket-handlers # Auth + echo sample handlers
-    ├── unit/                  # Handler, encryption, server, client unit tests
+    ├── setup.ts               # Bootstrap + #45 isolation guard
+    ├── unit/                  # Handler, encryption, server, client, config-isolation
     └── integration/           # Full server+client round-trip tests
 ```
 
@@ -39,7 +41,7 @@ When running `stonyx test` from within the package directory, Stonyx detects the
 // Stonyx wraps it as: { sockets: { port, address, authKey, ... } }
 ```
 
-Test overrides from `test/config/environment.js` are merged on top.
+Test overrides from `test/config/environment.ts` are merged on top, and every ambient value they must pin is documented in [Configuration](configuration.md#why-all-ten-keys-are-pinned) (#45).
 
 ## Singleton Pattern
 

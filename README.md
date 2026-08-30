@@ -205,11 +205,28 @@ Configuration is read from `stonyx/config` under `sockets`:
 | Option | Env Var | Default | Description |
 |--------|---------|---------|-------------|
 | `port` | `SOCKET_PORT` | `2667` | WebSocket server port |
-| `address` | `SOCKET_ADDRESS` | `ws://localhost:2667` | Client connection address |
+| `address` | `SOCKET_ADDRESS` | `ws://localhost:{port}` | Client connection address |
 | `authKey` | `SOCKET_AUTH_KEY` | `'AUTH_KEY'` | Shared authentication key |
 | `heartBeatInterval` | `SOCKET_HEARTBEAT_INTERVAL` | `30000` | Heartbeat interval in ms |
 | `handlerDir` | `SOCKET_HANDLER_DIR` | `'./socket-handlers'` | Handler directory path |
+| `log` | `SOCKET_LOG` | `false` | Enable verbose logging |
 | `encryption` | `SOCKET_ENCRYPTION` | `'true'` | Enable AES-256-GCM encryption |
+| `reconnectBaseDelay` | `SOCKET_RECONNECT_BASE_DELAY` | `1000` | Base delay in ms for reconnect backoff |
+| `reconnectMaxDelay` | `SOCKET_RECONNECT_MAX_DELAY` | `60000` | Ceiling in ms for reconnect backoff |
+| `maxReconnectAttempts` | `SOCKET_MAX_RECONNECT_ATTEMPTS` | `Infinity` | Reconnect attempts before giving up |
+
+That is every variable `config/environment.js` reads -- all ten. `authData`
+(`{}`), `logColor` (`'white'`) and `logMethod` (`'socket'`) are also part of the
+resolved config but are not settable from the environment. No environment value
+is coerced: each resolves as the string the shell supplied.
+
+> **If your app consumes this package and runs its own test suite:** pin all ten
+> of these in your own `test/config/environment.js`, and keep `port` and
+> `address` coupled -- `address` is computed from `port` at module-eval time, so
+> pinning `port` alone does not move it. This package reads these variables
+> unconditionally, so a `NODE_ENV=test` run in a shell that exports
+> `SOCKET_ADDRESS` will dial whatever it names and send `authKey` to it. See
+> [docs/configuration.md](docs/configuration.md#why-all-ten-keys-are-pinned).
 
 ## API Reference
 
