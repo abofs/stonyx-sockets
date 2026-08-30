@@ -42,7 +42,7 @@ import { tmpdir } from 'os';
 import { readFileSync } from 'fs';
 import config from 'stonyx/config';
 import { startDecoy, freePort, type Decoy } from '../helpers/decoy-listener.js';
-import { redactSecrets, redactFrames, safeAddress } from '../helpers/redact.js';
+import { redactSecrets, redactFrames, safeAddress, stripUserinfo } from '../helpers/redact.js';
 import { checkTestIsolation, TEST_CONFIG_RELATIVE_PATH } from '../helpers/assert-test-isolation.js';
 import { PINNED_ENV_VARS, resolveTestPort } from '../config/environment.js';
 
@@ -242,7 +242,18 @@ module('[Unit] Test-config isolation (#45)', function () {
     // Likewise not printed raw: on a dropped pin this is the real internal host.
     console.log(`[#45 scrub guard] resolved address in this process: ${safeAddress(sockets.address)}`);
 
-    assert.deepEqual(redacted, expectedConfig(port), 'this process resolved the pinned test config');
+    // The diff goes through THE SAME helper as the console.log above. It did
+    // not, and the two disagreed on the same value in the same run: the log
+    // line printed `<non-loopback address withheld>` while the deepEqual --
+    // the more visible of the two -- rendered the real ambient host into the
+    // TAP stream of a public repo. `safeAddress` returns a loopback address
+    // verbatim, so the healthy run still deep-equals `expectedConfig` exactly
+    // and this assertion is no weaker than before; a drifted address renders
+    // as the withheld marker against the expected pin, which says what went
+    // wrong without naming the host.
+    const forDiff = { ...redacted, address: safeAddress((redacted as Record<string, unknown>).address) };
+
+    assert.deepEqual(forDiff, expectedConfig(port), 'this process resolved the pinned test config');
     assert.deepEqual(
       redactedFields,
       [],
@@ -813,5 +824,54 @@ module('[Unit] Test-config isolation (#45)', function () {
 
     assert.ok(files.includes('README.md'), 'README.md is in package.json `files`, so the table above is the PUBLISHED one');
     assert.notOk(files.includes('docs'), 'docs/ is NOT published -- consumer-facing config guidance has to live in README.md');
+  });
+  // ---------------------------------------------------------------------
+  // A15 -- a credential that is not under a secret-shaped KEY.
+  //
+  // test/helpers/redact.ts matched on key names only, and `address` does not
+  // match `/key|token|secret|password|credential/i`. A URL authority can carry
+  // userinfo, so an ambient `SOCKET_ADDRESS=ws://svc:<secret>@127.0.0.1:2667`
+  // is a credential in a field the helper ignored -- and its hostname is
+  // loopback, so the boot guard permits the run. Measured on the previous head,
+  // the secret reached stdout TWICE in one run: once from `safeAddress`, which
+  // returned loopback addresses verbatim, and once from A0's `deepEqual` diff.
+  //
+  // In-process and pure, on the same terms as A9: `stripUserinfo`,
+  // `redactSecrets` and `safeAddress` take their inputs as arguments and
+  // resolve no config, so there is no boot for a subprocess to be needed for.
+  // The resolution-path coverage of the same helper is A0/A1/A3.
+  // ---------------------------------------------------------------------
+  test('A15 [in-process] URL userinfo is stripped on every render path, whatever the key name', function (assert) {
+    const SECRET = 'USERINFO-CANARY-4d7b2e9a1f6c3805';
+
+    // Both branches of safeAddress. Loopback was the leaking one: the hostname
+    // is 127.0.0.1, so the value was returned verbatim, credential and all.
+    for (const address of [
+      `ws://svc:${SECRET}@127.0.0.1:2667`,
+      `ws://${SECRET}@localhost:2667`,
+      `wss://svc:${SECRET}@internal.example.com:2666/path?q=1`,
+    ]) {
+      assert.notOk(safeAddress(address).includes(SECRET), `safeAddress withholds the userinfo credential in ${address.replace(SECRET, '<secret>')}`);
+      assert.notOk(JSON.stringify(redactSecrets({ address }).value).includes(SECRET), 'redactSecrets strips it too, so the deepEqual diff cannot render it');
+      assert.deepEqual(redactSecrets({ address }).redactedFields, ['address'], 'the hit is reported as a redacted field, which is what A0/A3 assert on');
+    }
+
+    // The host survives on the loopback branch -- withholding it would make the
+    // log line useless for the case it exists to show.
+    assert.strictEqual(safeAddress(`ws://svc:${SECRET}@127.0.0.1:2667`), 'ws://<redacted userinfo>@127.0.0.1:2667', 'the loopback host is still shown; only the userinfo goes');
+
+    // No key to match on at all: an array element.
+    const nested = redactSecrets({ addresses: [`ws://svc:${SECRET}@127.0.0.1:2667`] });
+    assert.notOk(JSON.stringify(nested.value).includes(SECRET), 'an array element is covered, though it carries no key name');
+    assert.deepEqual(nested.redactedFields, ['addresses[0]'], 'and the array element is reported by its dotted path');
+
+    // NEGATIVE CONTROLS. Without these every assertion above is satisfied by a
+    // helper that mangles or withholds every string it is handed -- which would
+    // make A0/A1's deep-equals fail, or worse, pass vacuously.
+    assert.strictEqual(safeAddress('ws://localhost:2667'), 'ws://localhost:2667', 'a clean loopback address is still returned byte-for-byte, with no normalising trailing slash');
+    assert.strictEqual(stripUserinfo('ws://localhost:2667'), 'ws://localhost:2667', 'stripUserinfo is identity when there is no userinfo');
+    assert.strictEqual(safeAddress('ws://evil.example.com:2666'), '<non-loopback address withheld>', 'a non-loopback address is still withheld whole');
+    assert.deepEqual(redactSecrets(expectedConfig(2667)).redactedFields, [], 'the pinned config itself redacts to nothing, so a green A0/A3 still means something');
+    assert.deepEqual(redactSecrets(expectedConfig(2667)).value, expectedConfig(2667), 'and passes through unchanged, so A1 is not comparing a mangled object');
   });
 });
