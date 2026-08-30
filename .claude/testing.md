@@ -116,6 +116,11 @@ What to do, when working in this repo:
   A0, A9 and A13's range cases are the labelled in-process exceptions.
 - **Never point a test at a host you do not control.** The isolation suite uses
   a decoy listener bound to `127.0.0.1` on an ephemeral port.
+- **Assert contact at the TCP layer, not only the WebSocket one.**
+  `test/helpers/decoy-listener.ts` counts `tcpConnections`, `connections`
+  (completed upgrades) and `frames`. `client-test.ts` dials and tears the socket
+  down before the upgrade, so a guard reading `connections` alone reports zero on
+  a run that did dial out — measured `tcp=1 wsHandshakes=0` in 3 of 3 runs.
 - **Never render a resolved config or a captured frame raw in an assertion
   message.** Use `test/helpers/redact.ts`; a guard whose red state discloses the
   credential it protects is worse than no guard.

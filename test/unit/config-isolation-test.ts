@@ -438,7 +438,24 @@ module('[Unit] Test-config isolation (#45)', function () {
     });
 
     test('A4 the outbound-dialling suites open zero connections to the foreign host', function (assert) {
-      assert.strictEqual(decoy.connections, 0, 'decoy listener accepted no connections from the suite');
+      // COUNTED AT THE TCP LAYER, and that is the load-bearing one.
+      //
+      // This assertion used to read `decoy.connections`, which counts COMPLETED
+      // WebSocket upgrades. `client-test.ts` -- the file A4 was re-pointed at
+      // last round precisely because it is the one that dials -- calls
+      // `connect()` and tears the socket down immediately, so its dial to the
+      // foreign host frequently completes at the TCP layer and never at the
+      // upgrade layer. Measured over three runs of this exact scenario:
+      // `tcp=1 ws=0`, `tcp=1 ws=0`, `tcp=0 ws=0`. A4 therefore reported GREEN on
+      // two of three runs that DID dial out. Re-pointing the guard at the right
+      // file exposed that its instrument was one layer too high.
+      //
+      // Both counters are asserted, in leak order: contact, then upgrade, then
+      // disclosure. A red on the first with the others green is a dial that was
+      // torn down before it could hand anything over -- still a failure of "the
+      // suite may only talk to itself", and no longer invisible.
+      assert.strictEqual(decoy.tcpConnections, 0, 'decoy listener accepted no TCP connections from the suite -- the layer the dial actually happens at');
+      assert.strictEqual(decoy.connections, 0, 'decoy listener completed no WebSocket handshakes from the suite');
       // Frames are redacted before rendering: on a real regression the auth
       // frame carries the developer's ambient SOCKET_AUTH_KEY, and a failure
       // message that prints it is BLOCKER-2 in a second location.
@@ -678,7 +695,12 @@ module('[Unit] Test-config isolation (#45)', function () {
     });
 
     test('A11 an un-isolated boot makes zero contact with the ambient host', function (assert) {
-      assert.strictEqual(decoy.connections, 0, 'decoy listener accepted no connections');
+      // Same layering correction as A4, and it matters more here: A11's whole
+      // claim is that NOTHING left the process before the guard fired. A dial
+      // that opened a TCP socket and was torn down before the upgrade is a
+      // packet to the ambient host, and at the upgrade layer it was invisible.
+      assert.strictEqual(decoy.tcpConnections, 0, 'decoy listener accepted no TCP connections -- nothing reached the ambient host at all');
+      assert.strictEqual(decoy.connections, 0, 'decoy listener completed no WebSocket handshakes');
       assert.strictEqual(decoy.frames.length, 0, `decoy listener received no frames (got: ${JSON.stringify(redactFrames(decoy.frames))})`);
       assert.notOk(
         output.includes('unisolated-sentinel-auth-key'),
