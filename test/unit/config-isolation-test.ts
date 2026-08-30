@@ -32,6 +32,7 @@ import QUnit from 'qunit';
 import { spawn, spawnSync } from 'child_process';
 import config from 'stonyx/config';
 import { startDecoy, freePort, type Decoy } from '../helpers/decoy-listener.js';
+import { redactSecrets, safeAddress } from '../helpers/redact.js';
 
 const { module, test } = QUnit;
 
@@ -99,7 +100,15 @@ const MARKER = '__RESOLVED_SOCKETS_CONFIG__';
 const PROBE_ARGS = ['--import', 'tsx/esm', '--import', './test/setup.ts', 'test/helpers/print-resolved-config.ts'];
 
 interface ProbeResult {
+  /** Resolved `config.sockets`, with non-test secret values already redacted. */
   sockets: Record<string, unknown>;
+  /**
+   * Paths of secret-shaped fields the probe redacted. Non-empty exactly when a
+   * secret-shaped field held something other than the pinned test literal, so
+   * assertions can catch an ambient credential surviving without ever
+   * rendering it. See `test/helpers/redact.ts`.
+   */
+  redactedFields: string[];
   stdout: string;
   stderr: string;
   warnings: string[];
@@ -132,8 +141,14 @@ function probe(overrides: Record<string, string | null>): ProbeResult {
     throw new Error(`config probe produced no ${MARKER} line.\nstdout:\n${stdout}\nstderr:\n${stderr}`);
   }
 
+  const payload = JSON.parse(line.slice(MARKER.length)) as {
+    sockets: Record<string, unknown>;
+    redactedFields: string[];
+  };
+
   return {
-    sockets: JSON.parse(line.slice(MARKER.length)),
+    sockets: payload.sockets,
+    redactedFields: payload.redactedFields,
     stdout,
     stderr,
     warnings: stderr.split('\n').filter(l => l.includes('[@stonyx/sockets test config]')),
@@ -175,9 +190,24 @@ module('[Unit] Test-config isolation (#45)', function () {
     const sockets = (config as Record<string, unknown>).sockets as Record<string, unknown>;
     const port = Number(process.env.TEST_SOCKET_PORT ?? 2667);
 
-    console.log(`[#45 scrub guard] resolved address in this process: ${String(sockets.address)}`);
+    // A0 is the ONLY assertion that runs against the ambient environment, and
+    // QUnit renders the whole `actual` object on failure. Unredacted, a dropped
+    // pin wrote the developer's real SOCKET_AUTH_KEY into the TAP stream and
+    // from there into the public CI log. Redacting first keeps the diff just as
+    // actionable -- `authKey: "<redacted non-test secret>"` against an expected
+    // `"TEST_AUTH_KEY"` says exactly what went wrong -- without disclosing it.
+    // Same helper as the subprocess probe; one root cause, one fix.
+    const { value: redacted, redactedFields } = redactSecrets(sockets);
 
-    assert.deepEqual(sockets, expectedConfig(port), 'this process resolved the pinned test config');
+    // Likewise not printed raw: on a dropped pin this is the real internal host.
+    console.log(`[#45 scrub guard] resolved address in this process: ${safeAddress(sockets.address)}`);
+
+    assert.deepEqual(redacted, expectedConfig(port), 'this process resolved the pinned test config');
+    assert.deepEqual(
+      redactedFields,
+      [],
+      'no secret-shaped field in the resolved config holds a non-test value'
+    );
   });
 
   // ---------------------------------------------------------------------
@@ -218,15 +248,31 @@ module('[Unit] Test-config isolation (#45)', function () {
   // entire resolved object for ANY surviving ambient value.
   // ---------------------------------------------------------------------
   test('A3 no ambient sentinel value survives anywhere in the resolved config', function (assert) {
-    const { sockets } = probe(fullPollution());
+    const { sockets, redactedFields } = probe(fullPollution());
     const serialised = JSON.stringify(sockets);
 
     for (const [name, sentinel] of Object.entries(POLLUTION)) {
+      // SOCKET_AUTH_KEY is excluded from the string scan ON PURPOSE, and the
+      // exclusion is not a weakening. Its value is redacted before it crosses
+      // the process boundary (see test/helpers/redact.ts), so scanning the
+      // serialised object for that sentinel could no longer fail -- it would be
+      // a vacuous assertion dressed as a real one. The `redactedFields` check
+      // below replaces it and is strictly stronger: it fires for ANY ambient
+      // value in a secret-shaped field, not only the one sentinel this test
+      // happens to set.
+      if (name === 'SOCKET_AUTH_KEY') continue;
+
       assert.notOk(
         serialised.includes(sentinel),
         `no value from ${name} (${sentinel}) survives anywhere in the resolved config`
       );
     }
+
+    assert.deepEqual(
+      redactedFields,
+      [],
+      'no secret-shaped field held an ambient value -- the probe had nothing to redact'
+    );
 
     // The set property, stated directly: with encryption pinned off, anything
     // in this object is something the suite would put on the wire in cleartext.
