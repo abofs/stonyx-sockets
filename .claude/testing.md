@@ -110,10 +110,14 @@ What to do, when working in this repo:
 - **`address` and `port` must stay coupled.** `address` is computed from `port`
   at module-eval time in `config/environment.js`, so pinning `port` alone does
   *not* move `address`.
-- **Assertions about this must spawn a subprocess.** Config resolves once, in
-  `Stonyx.start()`, before qunit loads a single test file — setting
-  `process.env` from a `beforeEach` is too late and passes against broken code.
-  A0, A9 and A13's range cases are the labelled in-process exceptions.
+- **Assertions about config *resolution* must spawn a subprocess.** Config
+  resolves once, in `Stonyx.start()`, before qunit loads a single test file —
+  setting `process.env` from a `beforeEach` is too late and passes against
+  broken code. The reason is the boundary: a pure function handed its inputs as
+  *arguments* resolves nothing, so there is no boot to be too late for. A0, A9
+  and A13's range cases are the in-process exceptions on that principle, and
+  each says so in its TAP name. Argue a fourth from the principle, never from
+  the fact that there are three.
 - **Never point a test at a host you do not control.** The isolation suite uses
   a decoy listener bound to `127.0.0.1` on an ephemeral port.
 - **Assert contact at the TCP layer, not only the WebSocket one.**

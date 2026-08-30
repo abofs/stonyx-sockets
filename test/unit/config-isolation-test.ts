@@ -17,21 +17,53 @@
 // The pinned set is still asserted AS A SET (A1/A3) rather than key by key --
 // because any single unpinned read can be the one that matters.
 //
-// WHY EVERY GUARD HERE SPAWNS A SUBPROCESS
+// WHY AN ASSERTION ABOUT CONFIG RESOLUTION SPAWNS A SUBPROCESS -- AND THE
+// PRINCIPLE THAT SAYS WHEN ONE NEED NOT
 // ----------------------------------------
 // Config resolves exactly once, inside `Stonyx.start()`, before qunit loads a
 // single test file. Mutating `process.env` from a `beforeEach` is too late --
 // the value is already baked in, so such a test passes against UNFIXED code
 // while looking like coverage of exactly the right thing. A subprocess is the
-// only place this defect can be exhibited.
+// only place that defect can be exhibited, so every assertion ABOUT RESOLUTION
+// spawns one: A1, A2, A3, A6, A7, A8, A10, A11 and A13's injection half.
+//
+// The rule's reason is also its boundary, and stating the boundary HERE, at the
+// rule, is deliberate. It binds assertions about RESOLUTION. A pure function
+// handed its inputs as ARGUMENTS resolves nothing, so there is no boot for a
+// `beforeEach` to be too late for and a subprocess buys no coverage. Three
+// guards are in-process on exactly that principle, and each carries the label
+// in its TAP name so a reader scanning a CI log sees it:
+//
+//   A0  [diagnostic] -- reads THIS process's already-resolved config, which is
+//                       the one thing a subprocess cannot report back. Its
+//                       resolution-path twin is A1.
+//   A9  [in-process] -- calls `checkTestIsolation()` with crafted inputs. Its
+//                       resolution-path twin is A10/A11, which prove the guard
+//                       is wired into the boot.
+//   A13 [in-process range + subprocess injection] -- `resolveTestPort()` with
+//                       crafted inputs for the range/parse cases; the host-
+//                       injection case goes through a real subprocess, because
+//                       there the claim is about what the whole pipeline
+//                       produces.
+//
+// A12, A14 and A15 assert properties of source artefacts and of the redaction
+// helper rather than of resolution, so the rule does not reach them at all;
+// A16 spawns regardless, because its claim is about what a bootstrap does.
+//
+// Argue any fourth exception from the PRINCIPLE -- "is this assertion resolving
+// config, or is it handed its inputs?" -- and never from the fact that there
+// are already three. Precedent is how a rule dies.
 //
 // AND NO GUARD DEPENDS ON A VARIABLE BEING ABSENT
 // -----------------------------------------------
-// "The variable happens not to be set" is not a safety property -- the machine
-// this was found on had SOCKET_ADDRESS, SOCKET_AUTH_KEY and
-// SOCKET_AGENT_AUTH_KEY exported at real values. Every guard below therefore
-// SETS the polluting variables to unreachable sentinels. A0 and A7 are the two
-// deliberate exceptions and are labelled for what they are.
+// A SEPARATE rule from the one above, with a separate exception list -- they
+// sit next to each other and have been conflated before. "The variable happens
+// not to be set" is not a safety property: the machine this was found on had
+// SOCKET_ADDRESS, SOCKET_AUTH_KEY and SOCKET_AGENT_AUTH_KEY exported at real
+// values. Every guard below therefore SETS the polluting variables to
+// unreachable sentinels. A0 and A7 are the two deliberate exceptions to THIS
+// rule and are labelled for what they are -- note that A7 spawns a subprocess
+// like everything else, so it is not an exception to the subprocess rule.
 //
 // Nothing in this file ever contacts a host off this machine: the only remote
 // endpoint used is a decoy listener bound to 127.0.0.1 on an ephemeral port.
@@ -578,7 +610,7 @@ module('[Unit] Test-config isolation (#45)', function () {
   // so a `beforeEach` mutation is too late to exhibit a resolution defect.
   // `checkTestIsolation` takes its inputs as arguments and resolves nothing, so
   // there is no boot to be too late for. The resolution-path coverage is A10/A11.
-  test('A9 the boot guard rejects every un-isolated boot shape it is responsible for', function (assert) {
+  test('A9 [in-process] the boot guard rejects every un-isolated boot shape it is responsible for', function (assert) {
     const cwd = process.cwd();
 
     // Missing override. This is the branch A10/A11 cannot exercise without
@@ -781,7 +813,7 @@ module('[Unit] Test-config isolation (#45)', function () {
   // config resolution, because that is the one where the thing being asserted
   // is what the WHOLE PIPELINE produces rather than what one function returns.
   // ---------------------------------------------------------------------
-  test('A13 TEST_SOCKET_PORT is validated and cannot move the suite off localhost', function (assert) {
+  test('A13 [in-process range + subprocess injection] TEST_SOCKET_PORT is validated and cannot move the suite off localhost', function (assert) {
     // Pure-function half: every shape that must fall back to the default.
     for (const bad of ['abc', '', '2667.5', '0', '-1', '70000', 'NaN', '2667@evil.example.com', '80/../@attacker.test']) {
       assert.strictEqual(
