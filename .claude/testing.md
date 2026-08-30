@@ -22,7 +22,7 @@ test/
 │   └── socket-handlers/
 │       ├── auth.ts               # Sample auth handler (server + client hooks)
 │       └── echo.ts               # Simple echo handler (both hooks)
-├── support/
+├── helpers/
 │   ├── print-resolved-config.ts  # Subprocess probe: prints resolved config.sockets
 │   └── decoy-listener.ts         # Local 127.0.0.1 decoy WebSocket listener
 ├── unit/
@@ -36,7 +36,7 @@ test/
     └── socket-test.ts            # Full server+client round-trip tests
 ```
 
-Files under `test/support/` are helpers, not suites — the runner glob is
+Files under `test/helpers/` are shared helpers, not suites — the runner glob is
 `test/**/*-test.ts`, so they are only loaded when a test imports them.
 
 ## Test Config

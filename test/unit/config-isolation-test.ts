@@ -31,7 +31,7 @@
 import QUnit from 'qunit';
 import { spawn, spawnSync } from 'child_process';
 import config from 'stonyx/config';
-import { startDecoy, freePort, type Decoy } from '../support/decoy-listener.js';
+import { startDecoy, freePort, type Decoy } from '../helpers/decoy-listener.js';
 
 const { module, test } = QUnit;
 
@@ -96,7 +96,7 @@ function expectedConfig(port: number) {
 }
 
 const MARKER = '__RESOLVED_SOCKETS_CONFIG__';
-const PROBE_ARGS = ['--import', 'tsx/esm', '--import', './test/setup.ts', 'test/support/print-resolved-config.ts'];
+const PROBE_ARGS = ['--import', 'tsx/esm', '--import', './test/setup.ts', 'test/helpers/print-resolved-config.ts'];
 
 interface ProbeResult {
   sockets: Record<string, unknown>;
