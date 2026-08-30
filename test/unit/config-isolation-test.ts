@@ -342,18 +342,24 @@ module('[Unit] Test-config isolation (#45)', function () {
 
     assert.strictEqual(warnings.length, 1, `exactly one warning was emitted (got ${warnings.length}): ${warnings.join(' // ')}`);
 
-    const warning = warnings[0] ?? '';
+    // Parse the named set out of the warning rather than substring-matching it.
+    // Substring matching is wrong here: 'SOCKET_PORT' is a substring of the
+    // 'TEST_SOCKET_PORT' the same sentence advertises as the escape hatch.
+    const named = (/variable\(s\): ([^.]+)\./.exec(warnings[0] ?? '')?.[1] ?? '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .sort();
 
-    assert.ok(warning.includes('SOCKET_ADDRESS'), 'warning names SOCKET_ADDRESS');
-    assert.ok(warning.includes('SOCKET_AUTH_KEY'), 'warning names SOCKET_AUTH_KEY');
+    assert.deepEqual(
+      named,
+      ['SOCKET_ADDRESS', 'SOCKET_AUTH_KEY'],
+      'warning names exactly the two watched variables that were present, and no others'
+    );
     assert.notOk(
-      warning.includes('SOCKET_AGENT_AUTH_KEY'),
+      named.includes('SOCKET_AGENT_AUTH_KEY'),
       'warning does NOT name SOCKET_AGENT_AUTH_KEY -- this module never reads it, and a guard that fires on an inert variable is worse than none'
     );
-
-    for (const name of ['SOCKET_PORT', 'SOCKET_HANDLER_DIR', 'SOCKET_ENCRYPTION', 'SOCKET_LOG']) {
-      assert.notOk(warning.includes(name), `warning does not name ${name}, which is not set`);
-    }
 
     // Warn, do not hard-fail: the boot still completed and produced config.
     assert.strictEqual(sockets.address, 'ws://localhost:2667', 'the run was warned, not failed -- config still resolved to the pin');
