@@ -283,10 +283,10 @@ module('[Unit] Test-config isolation (#45)', function () {
   });
 
   // ---------------------------------------------------------------------
-  // A4 / A5 -- one polluted integration run against a local decoy, two
-  // independent properties asserted on it.
+  // A4 / A5 -- one polluted run of every suite that dials out, against a local
+  // decoy, with two independent properties asserted on it.
   // ---------------------------------------------------------------------
-  module('polluted integration run against a local decoy listener', function (hooks) {
+  module('polluted run of the outbound-dialling suites against a local decoy listener', function (hooks) {
     const BUDGET_MS = 90000;
 
     let decoy: Decoy;
@@ -317,7 +317,27 @@ module('[Unit] Test-config isolation (#45)', function () {
       const run = await new Promise<{ out: string; code: number | null; killed: boolean }>(resolve => {
         const child = spawn(
           process.execPath,
-          ['--import', 'tsx/esm', '--import', './test/setup.ts', 'node_modules/qunit/bin/qunit.js', 'test/integration/socket-test.ts'],
+          [
+            '--import', 'tsx/esm',
+            '--import', './test/setup.ts',
+            'node_modules/qunit/bin/qunit.js',
+            // BOTH files that dial out, not just the integration suite.
+            //
+            // This guard originally spawned test/integration/socket-test.ts
+            // alone, and that was the wrong file. The leak actually observed in
+            // the missing-override scenario came from test/unit/client-test.ts:
+            // `client.connect().catch(() => {})` at :103 and :237 dials
+            // config.sockets.address and swallows the error, while every
+            // integration test failed fast at `SocketServer requires an "auth"
+            // handler` (ambient handlerDir) and opened zero connections. So in
+            // the exact scenario this guard exists for, it would have observed
+            // zero connections from its child and passed GREEN while the suite
+            // leaked. client-test.ts is listed first because it is the one that
+            // leaked. config-isolation-test.ts is deliberately excluded to
+            // avoid recursion.
+            'test/unit/client-test.ts',
+            'test/integration/socket-test.ts',
+          ],
           { cwd: process.cwd(), env }
         );
 
@@ -348,7 +368,7 @@ module('[Unit] Test-config isolation (#45)', function () {
       if (decoy) await decoy.close();
     });
 
-    test('A4 the integration suite opens zero connections to the foreign host', function (assert) {
+    test('A4 the outbound-dialling suites open zero connections to the foreign host', function (assert) {
       assert.strictEqual(decoy.connections, 0, 'decoy listener accepted no connections from the suite');
       // Frames are redacted before rendering: on a real regression the auth
       // frame carries the developer's ambient SOCKET_AUTH_KEY, and a failure
@@ -357,8 +377,18 @@ module('[Unit] Test-config isolation (#45)', function () {
 
       // A suite that connected nowhere at all would also satisfy the above.
       // This pins that it connected to its OWN local server and passed.
-      assert.ok(/^# fail 0$/m.test(output), `polluted integration run reported zero failures\n${output.slice(-2000)}`);
-      assert.strictEqual(exitCode, 0, 'polluted integration run exited 0');
+      //
+      // freePort() is a TOCTOU race -- it binds :0, reads the port, closes, and
+      // the child binds it milliseconds later -- so a bind collision can turn
+      // this precondition red and point the reader at ambient-env pollution
+      // when the real cause is an unrelated process taking the port. Naming
+      // that case keeps a confusing red from being misdiagnosed as a security
+      // regression. (The port-collision defect itself is abofs/stonyx-sockets#51.)
+      const bindCollision = /EADDRINUSE/.test(output);
+
+      assert.notOk(bindCollision, 'the child suite bound its port -- a red here is a port collision, NOT ambient pollution');
+      assert.ok(/^# fail 0$/m.test(output), `polluted run reported zero failures\n${output.slice(-2000)}`);
+      assert.strictEqual(exitCode, 0, 'polluted run exited 0');
     });
 
     test('A5 the polluted integration run terminates within a bounded budget', function (assert) {
