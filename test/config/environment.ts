@@ -95,7 +95,43 @@ const DEFAULT_TEST_PORT = 2667;
  * built against localhost.
  */
 const { TEST_SOCKET_PORT } = process.env;
-const port = TEST_SOCKET_PORT ? Number(TEST_SOCKET_PORT) : DEFAULT_TEST_PORT;
+
+/**
+ * Resolve the escape hatch to a usable port, or fall back to the default.
+ *
+ * `Number()` is what stands between TEST_SOCKET_PORT and HOST INJECTION, and
+ * that is not obvious enough to leave implicit. `address` is built by string
+ * interpolation, and the `@` in a URL authority is userinfo, so an
+ * un-coerced `TEST_SOCKET_PORT=2667@evil.example.com` would yield
+ * `ws://localhost:2667@evil.example.com` -- whose hostname is
+ * `evil.example.com`, not localhost. Coercion defuses it (the result is NaN),
+ * and A13 pins that behaviour so a future edit mirroring
+ * `config/environment.js`'s own un-coerced `SOCKET_PORT ?? 2667` style cannot
+ * silently reopen it.
+ *
+ * Validation is warn-and-fall-back rather than throw, matching the posture of
+ * the ambient-variable warning below: this is a documented developer hatch, and
+ * a typo in it should produce a message, not a confusing `ws://localhost:NaN`
+ * connection failure somewhere unrelated.
+ */
+export function resolveTestPort(raw: string | undefined): number {
+  if (!raw) return DEFAULT_TEST_PORT;
+
+  const parsed = Number(raw);
+
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    console.warn(
+      `[@stonyx/sockets test config] Ignoring invalid TEST_SOCKET_PORT=${JSON.stringify(raw)}: ` +
+      `it must be an integer between 1 and 65535. Falling back to ${DEFAULT_TEST_PORT}.`
+    );
+
+    return DEFAULT_TEST_PORT;
+  }
+
+  return parsed;
+}
+
+const port = resolveTestPort(TEST_SOCKET_PORT);
 
 // Warn, do not hard-fail. Silence is what let #45 sit undetected, so the
 // warning is non-negotiable -- but a hard failure would break `pnpm test` by

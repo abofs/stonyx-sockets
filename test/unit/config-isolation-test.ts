@@ -36,7 +36,7 @@ import config from 'stonyx/config';
 import { startDecoy, freePort, type Decoy } from '../helpers/decoy-listener.js';
 import { redactSecrets, redactFrames, safeAddress } from '../helpers/redact.js';
 import { checkTestIsolation, TEST_CONFIG_RELATIVE_PATH } from '../helpers/assert-test-isolation.js';
-import { PINNED_ENV_VARS } from '../config/environment.js';
+import { PINNED_ENV_VARS, resolveTestPort } from '../config/environment.js';
 
 const { module, test } = QUnit;
 
@@ -687,6 +687,52 @@ module('[Unit] Test-config isolation (#45)', function () {
       Object.keys(POLLUTION).sort(),
       declared,
       'POLLUTION covers exactly the set config/environment.js reads, so no read goes un-exercised by A1/A3'
+    );
+  });
+  // ---------------------------------------------------------------------
+  // A13 -- TEST_SOCKET_PORT cannot smuggle a host, and cannot yield NaN.
+  //
+  // A8 exercised exactly one input, '27667' -- the happy path. The hatch's
+  // host-safety rests entirely on `Number()`: `address` is built by string
+  // interpolation and the `@` in a URL authority is userinfo, so an un-coerced
+  // value is a host-injection primitive. It is safe as written and was
+  // measured safe; what was missing is anything that would notice if it
+  // stopped being. A future edit mirroring config/environment.js's own
+  // un-coerced `SOCKET_PORT ?? 2667` style is a natural-looking consistency
+  // change that reopens it.
+  //
+  // Split deliberately: the range/parse cases run in-process against the pure
+  // `resolveTestPort`, and the injection case runs through a real subprocess
+  // config resolution, because that is the one where the thing being asserted
+  // is what the WHOLE PIPELINE produces rather than what one function returns.
+  // ---------------------------------------------------------------------
+  test('A13 TEST_SOCKET_PORT is validated and cannot move the suite off localhost', function (assert) {
+    // Pure-function half: every shape that must fall back to the default.
+    for (const bad of ['abc', '', '2667.5', '0', '-1', '70000', 'NaN', '2667@evil.example.com', '80/../@attacker.test']) {
+      assert.strictEqual(
+        resolveTestPort(bad),
+        2667,
+        `TEST_SOCKET_PORT=${JSON.stringify(bad)} falls back to the default rather than producing NaN or an out-of-range port`
+      );
+    }
+
+    // Negative control: a valid value is still honoured, so the above cannot be
+    // satisfied by a function that ignores its argument.
+    assert.strictEqual(resolveTestPort('27667'), 27667, 'a valid port is still honoured');
+    assert.strictEqual(resolveTestPort(undefined), 2667, 'an unset hatch uses the default');
+
+    // End-to-end half: the injection string through real config resolution.
+    const { sockets } = probe({ ...fullPollution(), TEST_SOCKET_PORT: '2667@evil.example.com' });
+
+    assert.strictEqual(
+      new URL(sockets.address as string).hostname,
+      'localhost',
+      'the resolved address hostname is localhost -- the hatch can change the port, never the host'
+    );
+    assert.strictEqual(sockets.port, 2667, 'the injection string resolved to the default port, not NaN');
+    assert.notOk(
+      JSON.stringify(sockets).includes('evil.example.com'),
+      'no part of the injection string survives anywhere in the resolved config'
     );
   });
 });
