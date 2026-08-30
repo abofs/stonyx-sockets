@@ -31,14 +31,23 @@
 import QUnit from 'qunit';
 import { spawn, spawnSync } from 'child_process';
 import { tmpdir } from 'os';
+import { readFileSync } from 'fs';
 import config from 'stonyx/config';
 import { startDecoy, freePort, type Decoy } from '../helpers/decoy-listener.js';
 import { redactSecrets, redactFrames, safeAddress } from '../helpers/redact.js';
 import { checkTestIsolation, TEST_CONFIG_RELATIVE_PATH } from '../helpers/assert-test-isolation.js';
+import { PINNED_ENV_VARS } from '../config/environment.js';
 
 const { module, test } = QUnit;
 
-/** Every SOCKET_* variable `config/environment.js` actually destructures. */
+/**
+ * Every SOCKET_* variable `config/environment.js` actually destructures.
+ *
+ * Hand-maintained, and A12 is what keeps it honest -- it parses the destructure
+ * out of the source file and deep-equals it against this array and against
+ * `PINNED_ENV_VARS`. Before A12 this was one of three hand-duplicated copies of
+ * the same list with only one of them enforced.
+ */
 const READ_ENV_VARS = [
   'SOCKET_PORT',
   'SOCKET_ADDRESS',
@@ -616,5 +625,68 @@ module('[Unit] Test-config isolation (#45)', function () {
         'the sentinel credential appears nowhere in the run output'
       );
     });
+  });
+  // ---------------------------------------------------------------------
+  // A12 -- close the deep-equal's blind spot (#45 HIGH).
+  //
+  // A1 catches a NEW CONFIG KEY. It does not catch a NEW ENVIRONMENT READ
+  // FEEDING AN EXISTING KEY, because such a read adds no key to the resolved
+  // object and resolves identically on both sides of the comparison. Proven on
+  // the previous head: making `logMethod` read a new SOCKET_LOG_METHOD left the
+  // suite 9/9 GREEN when scrubbed -- which is what CI always is -- and went
+  // 6/3 red only on a machine that exports that variable. No warning named it
+  // either, because it was not in PINNED_ENV_VARS. That is precisely the #45
+  // failure shape restored for a new variable, with this file's own anti-drift
+  // guard reporting green over it.
+  //
+  // Root cause: the read-list was hand-duplicated in THREE places -- the
+  // destructure in config/environment.js, PINNED_ENV_VARS (which drives the
+  // warning), and READ_ENV_VARS/POLLUTION (which drive these tests) -- and only
+  // the resolved-key shape was enforced. So this derives the list from the
+  // source of truth and asserts the other two against it.
+  //
+  // Parsing an artefact rather than restating it is the in-repo idiom:
+  // test/unit/publish-surface-test.ts does the same against `npm pack`.
+  // ---------------------------------------------------------------------
+  test('A12 the read-list is derived from config/environment.js and the two hand-maintained copies match it', function (assert) {
+    const source = readFileSync('config/environment.js', 'utf8');
+    const destructure = /const\s*\{([\s\S]*?)\}\s*=\s*process\.env\s*;/.exec(source);
+
+    // Control 1: the parse found the destructure at all. Without this a regex
+    // that stopped matching would compare [] against [] further down and this
+    // whole test would pass while enforcing nothing.
+    assert.ok(destructure, 'the `= process.env` destructure was located in config/environment.js');
+
+    const declared = (destructure?.[1] ?? '')
+      .split(',')
+      .map(name => name.trim())
+      .filter(Boolean)
+      .sort();
+
+    // Control 2: it found real names, and specifically one we know is there.
+    assert.ok(declared.length > 0, `the destructure yielded identifiers (got ${declared.length})`);
+    assert.ok(declared.includes('SOCKET_AUTH_KEY'), 'the parsed list contains SOCKET_AUTH_KEY, so the parse reflects the real file');
+
+    // The load-bearing pair. Either one going red means someone added or
+    // removed an environment read without updating the list that drives the
+    // warning, or the list that drives these guards.
+    assert.deepEqual(
+      [...PINNED_ENV_VARS].sort(),
+      declared,
+      'PINNED_ENV_VARS (test/config/environment.ts -- drives the ignored-variable warning) equals the set config/environment.js reads'
+    );
+    assert.deepEqual(
+      [...READ_ENV_VARS].sort(),
+      declared,
+      'READ_ENV_VARS (this file) equals the set config/environment.js reads'
+    );
+
+    // Third copy: the sentinel map every polluted probe is built from. If a new
+    // read is added and POLLUTION does not cover it, A1/A3 stop exercising it.
+    assert.deepEqual(
+      Object.keys(POLLUTION).sort(),
+      declared,
+      'POLLUTION covers exactly the set config/environment.js reads, so no read goes un-exercised by A1/A3'
+    );
   });
 });

@@ -62,13 +62,17 @@ interface TestEnvironmentConfig {
 
 /**
  * Ambient variables this override neutralises. Exactly the set that
- * `config/environment.js` destructures -- no more, no less.
+ * `config/environment.js` destructures -- no more, no less. That claim is
+ * MACHINE-CHECKED: A12 in test/unit/config-isolation-test.ts parses the
+ * destructure out of `config/environment.js` and deep-equals it against this
+ * array, so adding an env read there without adding it here fails the suite.
+ * Exported for that assertion.
  *
  * SOCKET_AGENT_AUTH_KEY is deliberately absent: nothing in this package reads
  * it, and a warning that fires on a variable which has never influenced a test
  * run is a warning nobody trusts.
  */
-const PINNED_ENV_VARS = [
+export const PINNED_ENV_VARS = [
   'SOCKET_PORT',
   'SOCKET_ADDRESS',
   'SOCKET_AUTH_KEY',
