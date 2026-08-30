@@ -7,6 +7,6 @@
 - [Architecture](architecture.md) -- Module structure, singleton pattern, Stonyx integration, handler discovery lifecycle
 - [Handlers](handlers.md) -- Handler class API, server/client hooks, auth flow, skipAuth, wire protocol
 - [Encryption](encryption.md) -- AES-256-GCM encryption, key derivation, handshake flow, session keys
-- [Configuration](configuration.md) -- All config options, env vars, defaults, how config loads via Stonyx
+- [Configuration](configuration.md) -- All config options, env vars, defaults, how config loads via Stonyx, and the ten-key test-isolation invariant (#45)
 - [API Reference](api-reference.md) -- Complete method/property reference for SocketServer, SocketClient, Handler
 - [Release](release.md) -- Release process
