@@ -9,15 +9,15 @@ importers:
   .:
     dependencies:
       stonyx:
-        specifier: 0.2.3-beta.62
-        version: 0.2.3-beta.62
+        specifier: 0.2.3-beta.78
+        version: 0.2.3-beta.78
       ws:
         specifier: ^8.18.1
         version: 8.19.0
     devDependencies:
       '@stonyx/utils':
-        specifier: 0.2.3-beta.23
-        version: 0.2.3-beta.23
+        specifier: 0.2.3-beta.26
+        version: 0.2.3-beta.26
       '@types/node':
         specifier: ^25.5.2
         version: 25.5.2
@@ -204,11 +204,11 @@ packages:
   '@sinonjs/samsam@9.0.3':
     resolution: {integrity: sha512-ZgYY7Dc2RW+OUdnZ1DEHg00lhRt+9BjymPKHog4PRFzr1U3MbK57+djmscWyKxzO1qfunHqs4N45WWyKIFKpiQ==}
 
-  '@stonyx/logs@1.0.1-beta.16':
-    resolution: {integrity: sha512-6UccOlU3hnVDKSruFZ/uGXBjK/i8USNjjc7me3ooUxSVbSn+tWhdgkWH/CWDymmvOz+A/FBdDD3dPr1nchbZqQ==}
+  '@stonyx/logs@1.0.1-beta.19':
+    resolution: {integrity: sha512-8UHGeWsFzXKOzF+BEt9wOqc+JxwVHNcC+wBje3Df6S54a4DhYTKaxYGNcdpvv3M7iT0ERCCv89ha+LfchjyjBQ==}
 
-  '@stonyx/utils@0.2.3-beta.23':
-    resolution: {integrity: sha512-6LRYN4FA/bYFp3r3/1dUuByC76o3QOMm1n+tot09oi0SRmYyGwgPigAZC0JX2wqkw4Fc9rYyhTLqY8o1g2QOMA==}
+  '@stonyx/utils@0.2.3-beta.26':
+    resolution: {integrity: sha512-slCeMIpKqlGbWtb5fKwJqMoa6KuacIBV5RsXPX2CtAUXUkMv4CY5flOoUjBap9BLGimrF1xGmmG+f/Pisfb/hg==}
 
   '@types/node@25.5.2':
     resolution: {integrity: sha512-tO4ZIRKNC+MDWV4qKVZe3Ql/woTnmHDr5JD8UI5hn2pwBrHEwOEMZK7WlNb5RKB6EoJ02gwmQS9OrjuFnZYdpg==}
@@ -266,8 +266,8 @@ packages:
   sinon@21.0.3:
     resolution: {integrity: sha512-0x8TQFr8EjADhSME01u1ZK31yv2+bd6Z5NrBCHVM+n4qL1wFqbxftmeyi3bwlr49FbbzRfrqSFOpyHCOh/YmYA==}
 
-  stonyx@0.2.3-beta.62:
-    resolution: {integrity: sha512-Sm0wc4R6qRANdMqxCd9LL1bfAfHDmg2d+90ygcb6m3ZZl0Zl5qxBKzSIShQ2PcSBdK97P8AOBFIFm+is4XGeqw==}
+  stonyx@0.2.3-beta.78:
+    resolution: {integrity: sha512-veiZmC144Qlkv49HW74RGAsDYzHFKnHyhpILIXy+BvLorL6lCJEf6AoUkXClt64VMh3bcy+lGQl1OB6iGdCGzg==}
     hasBin: true
 
   supports-color@7.2.0:
@@ -403,11 +403,11 @@ snapshots:
       '@sinonjs/commons': 3.0.1
       type-detect: 4.1.0
 
-  '@stonyx/logs@1.0.1-beta.16':
+  '@stonyx/logs@1.0.1-beta.19':
     dependencies:
       chalk: 5.6.2
 
-  '@stonyx/utils@0.2.3-beta.23': {}
+  '@stonyx/utils@0.2.3-beta.26': {}
 
   '@types/node@25.5.2':
     dependencies:
@@ -483,10 +483,10 @@ snapshots:
       diff: 8.0.3
       supports-color: 7.2.0
 
-  stonyx@0.2.3-beta.62:
+  stonyx@0.2.3-beta.78:
     dependencies:
-      '@stonyx/logs': 1.0.1-beta.16
-      '@stonyx/utils': 0.2.3-beta.23
+      '@stonyx/logs': 1.0.1-beta.19
+      '@stonyx/utils': 0.2.3-beta.26
 
   supports-color@7.2.0:
     dependencies:
