@@ -57,11 +57,11 @@
   },
   "homepage": "https://github.com/abofs/stonyx-sockets#readme",
   "dependencies": {
-    "stonyx": "0.2.3-beta.78",
+    "stonyx": "0.2.3-beta.62",
     "ws": "^8.18.1"
   },
   "devDependencies": {
-    "@stonyx/utils": "0.2.3-beta.26",
+    "@stonyx/utils": "0.2.3-beta.23",
     "@types/node": "^25.5.2",
     "@types/ws": "^8.18.1",
     "qunit": "^2.24.1",
