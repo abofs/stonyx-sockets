@@ -75,7 +75,7 @@ export default class AuthHandler extends Handler {
   }
 
   client(response) {
-    if (response !== 'success') this.client.promise.reject(response);
+    if (response !== 'success') return this.client.promise.reject(response);
     this.client.promise.resolve();
   }
 }
