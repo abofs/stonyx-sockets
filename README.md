@@ -15,6 +15,17 @@ WebSocket server and client module for the [Stonyx framework](https://github.com
 * **Encryption by default:** AES-256-GCM with per-session keys, zero external dependencies.
 * **Singleton pattern:** Matches the conventions of `@stonyx/rest-server` and `stonyx-orm`.
 
+## Usage reference
+
+The handlers in [`test/sample/`](https://github.com/abofs/stonyx-sockets/tree/dev/test/sample) are the canonical usage reference for this module; the integration tests run against them. They are not included in the npm package.
+
+Exports:
+
+* `@stonyx/sockets`: named `SocketServer`, `SocketClient` and `Handler`; the default export is the `Sockets` class Stonyx uses for auto-init
+* `@stonyx/sockets/server`: `SocketServer`
+* `@stonyx/sockets/client`: `SocketClient`
+* `@stonyx/sockets/handler`: `Handler`
+
 ## Installation
 
 ```bash
@@ -210,6 +221,10 @@ Configuration is read from `stonyx/config` under `sockets`:
 | `heartBeatInterval` | `SOCKET_HEARTBEAT_INTERVAL` | `30000` | Heartbeat interval in ms |
 | `handlerDir` | `SOCKET_HANDLER_DIR` | `'./socket-handlers'` | Handler directory path |
 | `encryption` | `SOCKET_ENCRYPTION` | `'true'` | Enable AES-256-GCM encryption |
+| `authData` | — | `{}` | Extra fields sent with `authKey` in the auth request |
+| `reconnectBaseDelay` | `SOCKET_RECONNECT_BASE_DELAY` | `1000` | First reconnect delay in ms (doubles per attempt) |
+| `reconnectMaxDelay` | `SOCKET_RECONNECT_MAX_DELAY` | `60000` | Reconnect delay cap in ms |
+| `maxReconnectAttempts` | `SOCKET_MAX_RECONNECT_ATTEMPTS` | `Infinity` | Attempts before `onReconnectFailed` |
 
 ## API Reference
 
@@ -220,7 +235,9 @@ Configuration is read from `stonyx/config` under `sockets`:
 | `new SocketServer()` | Singleton constructor |
 | `async init()` | Discover handlers, validate auth, start WebSocket server |
 | `sendTo(clientId, request, data)` | Send to one client by ID |
+| `sendToByMeta(key, value, request, data)` | Send to the first authenticated client whose `meta[key] === value`; returns `true`/`false` |
 | `broadcast(request, data)` | Send to all authenticated clients |
+| `onClientDisconnect` | Optional `(client, code, reason)` callback |
 | `clientMap` | `Map<id, client>` of connected clients |
 | `close()` | Terminate all connections and stop the server |
 | `reset()` | Close + clear all state (for testing) |
@@ -233,7 +250,8 @@ Configuration is read from `stonyx/config` under `sockets`:
 | `async init()` | Discover handlers, connect, authenticate |
 | `send(payload)` | Send a message to the server |
 | `close()` | Forcefully tear down the socket (remove listeners, terminate, null) |
-| `reconnect()` | Reconnect (max 5 retries) |
+| `reconnect()` | Reconnect with exponential backoff, up to `maxReconnectAttempts` (unlimited by default) |
+| `onDisconnect`, `onReconnecting`, `onReconnected`, `onReconnectFailed` | Optional lifecycle callbacks |
 | `reset()` | Close + clear all state (for testing) |
 
 ### Handler

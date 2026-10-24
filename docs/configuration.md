@@ -22,6 +22,10 @@ Access in code: `import config from 'stonyx/config'` → `config.sockets.port`, 
 | `handlerDir` | `SOCKET_HANDLER_DIR` | `'./socket-handlers'` | String | Path to handler files directory |
 | `log` | `SOCKET_LOG` | `false` | Boolean | Enable verbose logging (unused currently) |
 | `encryption` | `SOCKET_ENCRYPTION` | `'true'` | String | `'true'` or `'false'` — enables AES-256-GCM |
+| `authData` | — | `{}` | Object | Extra fields the client sends alongside `authKey` in the auth request |
+| `reconnectBaseDelay` | `SOCKET_RECONNECT_BASE_DELAY` | `1000` | Number | First reconnect delay in ms; doubles per attempt |
+| `reconnectMaxDelay` | `SOCKET_RECONNECT_MAX_DELAY` | `60000` | Number | Cap on the reconnect delay in ms (before jitter) |
+| `maxReconnectAttempts` | `SOCKET_MAX_RECONNECT_ATTEMPTS` | `Infinity` | Number | Reconnect attempts before `onReconnectFailed` fires |
 
 ### Logging config (framework-internal)
 

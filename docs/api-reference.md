@@ -29,6 +29,7 @@ The default export from `@stonyx/sockets` is the `Sockets` class (used by Stonyx
 | `wss` | `WebSocketServer \| null` | The underlying `ws` WebSocketServer instance |
 | `encryptionEnabled` | `boolean` | Whether AES-256-GCM encryption is active |
 | `globalKey` | `Buffer` | Derived encryption key from authKey (if encryption enabled) |
+| `onClientDisconnect` | `(client, code, reason) => void \| null` | Called after a client is removed from `clientMap` on disconnect |
 
 ### Static
 
@@ -60,6 +61,10 @@ Send a message to a specific client by numeric ID.
 - `data` — any serializable value
 
 Does nothing if the client doesn't exist.
+
+#### `sendToByMeta(key, value, request, data)`
+
+Send to the first authenticated client in `clientMap` whose `meta[key] === value`. Returns `true` if one matched, `false` otherwise. `meta` is set by the consumer's `auth` handler.
 
 #### `broadcast(request, data)`
 
@@ -115,6 +120,10 @@ Removes client from `clientMap`, logs disconnection.
 | `encryptionEnabled` | `boolean` | Whether AES-256-GCM encryption is active |
 | `globalKey` | `Buffer` | Derived encryption key from authKey (if encryption enabled) |
 | `sessionKey` | `Buffer \| null` | Per-session key received from server after auth |
+| `onDisconnect` | `(code, reason) => void \| null` | Called when the socket closes, before any reconnect. Not called after `close()`, which removes the listeners first |
+| `onReconnecting` | `(attempt, delay) => void \| null` | Called before each reconnect attempt |
+| `onReconnected` | `() => void \| null` | Called after a reconnect authenticates |
+| `onReconnectFailed` | `() => void \| null` | Called once `maxReconnectAttempts` is exceeded |
 
 ### Static
 
@@ -150,7 +159,11 @@ Sets the intentional-close flag, clears heartbeat timers, then forcefully tears 
 
 #### `reconnect()`
 
-Attempts to reconnect. Returns the `connect()` Promise. Fails after 5 consecutive attempts.
+Increments `reconnectCount`, waits `getReconnectDelay()`, then calls `connect()`. Once `reconnectCount` exceeds `config.sockets.maxReconnectAttempts` (default `Infinity`) it calls `onReconnectFailed` and stops. A successful connection resets the count. Called from `onClose()` unless the close was intentional (`close()` sets `_intentionalClose`).
+
+#### `getReconnectDelay()`
+
+`min(reconnectBaseDelay * 2^(reconnectCount - 1), reconnectMaxDelay)` plus 0-999 ms of random jitter. Defaults: base 1000 ms, max 60000 ms.
 
 #### `reset()`
 
@@ -180,7 +193,7 @@ Schedules `heartBeat()` via `setTimeout` at `config.sockets.heartBeatInterval`.
 
 #### `onClose()`
 
-Logs disconnection, clears heartbeat timer.
+Logs disconnection, clears both heartbeat timers, calls `onDisconnect`, and calls `reconnect()` unless the close was intentional.
 
 ---
 
