@@ -42,6 +42,8 @@ const config = {
     reconnectBaseDelay: 100,
   }
 };
+
+export default config;
 ```
 
 The handler directory points at the compiled samples in `dist-test/`. The test config does not set `port`, `address` or `authKey`, so those come from `config/environment.js` and therefore from `SOCKET_PORT`, `SOCKET_ADDRESS` and `SOCKET_AUTH_KEY` if they are set in your shell. Unset them before running the suite; otherwise the integration tests connect to whatever `SOCKET_ADDRESS` names.
@@ -135,6 +137,7 @@ Key patterns:
 - Messages are asynchronous. Use `setTimeout` + `await` before asserting on a response.
 - For multiple clients, set `SocketClient.instance = null` between creations and track the extra clients for cleanup.
 - Heartbeats use `heartBeatInterval` (60 s in the test config, 30 s by default). Use fake timers or a short interval to test the cycle.
+- Reconnection waits with `sleep()` from `@stonyx/utils/promise` (`src/client.ts`). The test config sets `maxReconnectAttempts: 0` so no loop starts; a unit test of `reconnect()` itself must stub `sleep` or use fake timers.
 
 ## Common Gotchas
 

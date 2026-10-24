@@ -32,7 +32,7 @@ The `Sockets` default export is a thin entry point — it does NOT auto-start th
 
 ### Standalone Mode (Testing)
 
-When running `stonyx test` from within the package directory, Stonyx detects the `stonyx-` prefix in the path and transforms the config:
+The suite runs through `test/setup.ts` (see `package.json` `scripts.test`), which calls `new Stonyx(config, cwd)` with this package's `config/environment.js`. Stonyx reads the module name from `package.json#name` (`@stonyx/sockets` becomes `sockets`) and transforms the config:
 
 ```javascript
 // config/environment.js exports { port, address, authKey, ... }

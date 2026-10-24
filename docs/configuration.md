@@ -93,6 +93,8 @@ const config = {
     reconnectBaseDelay: 100,
   }
 };
+
+export default config;
 ```
 
 Note: Test overrides use the namespaced key (`sockets: { ... }`) because they're merged after Stonyx has already namespaced the config.
