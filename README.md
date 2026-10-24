@@ -15,6 +15,19 @@ WebSocket server and client module for the [Stonyx framework](https://github.com
 * **Encryption by default:** AES-256-GCM with per-session keys, zero external dependencies.
 * **Singleton pattern:** Matches the conventions of `@stonyx/rest-server` and `stonyx-orm`.
 
+## Samples
+
+The handlers in [`test/sample/`](https://github.com/abofs/stonyx-sockets/tree/dev/test/sample) are the canonical usage reference for this module; the integration tests run against them. They are not included in the npm package. They are TypeScript and type-check against the published `Handler` type, which declares `server` and `client` as function-valued properties, so the TypeScript samples assign the hooks as `function` properties rather than methods. The JavaScript examples below use methods, which work the same at runtime.
+
+Before deploying, read the [security notes](https://github.com/abofs/stonyx-sockets/blob/dev/docs/encryption.md#security-notes): `authKey` falls back to the literal `'AUTH_KEY'` if unset, any `encryption` value other than `'true'`/`true` runs in plaintext, and the module provides no transport security unless you use `wss://`.
+
+## Exports
+
+* `@stonyx/sockets`: named `SocketServer`, `SocketClient` and `Handler`; the default export is the `Sockets` class Stonyx uses for auto-init
+* `@stonyx/sockets/server`: `SocketServer`
+* `@stonyx/sockets/client`: `SocketClient`
+* `@stonyx/sockets/handler`: `Handler`
+
 ## Installation
 
 ```bash
@@ -38,21 +51,31 @@ Each handler extends `Handler` and defines a `server()` method, a `client()` met
 
 ```javascript
 // socket-handlers/auth.js
+import { timingSafeEqual } from 'node:crypto';
 import { Handler } from '@stonyx/sockets';
 import config from 'stonyx/config';
+
+// Constant-time compare; timingSafeEqual throws on unequal lengths, so check length first.
+function authKeyMatches(given) {
+  const { authKey } = config.sockets;
+  if (typeof authKey !== 'string' || authKey === '' || typeof given !== 'string') return false;
+
+  const a = Buffer.from(given), b = Buffer.from(authKey);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export default class AuthHandler extends Handler {
   static skipAuth = true;  // auth handler must work before authentication
 
   server(data, client) {
-    if (data.authKey !== config.sockets.authKey) return client.close();
+    if (!authKeyMatches(data?.authKey)) return client.close();
 
     this._serverRef.clientMap.set(client.id, client);
     return 'success';
   }
 
   client(response) {
-    if (response !== 'success') this.client.promise.reject(response);
+    if (response !== 'success') return this.client.promise.reject(response);
     this.client.promise.resolve();
   }
 }
@@ -206,10 +229,14 @@ Configuration is read from `stonyx/config` under `sockets`:
 |--------|---------|---------|-------------|
 | `port` | `SOCKET_PORT` | `2667` | WebSocket server port |
 | `address` | `SOCKET_ADDRESS` | `ws://localhost:2667` | Client connection address |
-| `authKey` | `SOCKET_AUTH_KEY` | `'AUTH_KEY'` | Shared authentication key |
+| `authKey` | `SOCKET_AUTH_KEY` | `'AUTH_KEY'` | Shared authentication key; set it in production (see the [security notes](https://github.com/abofs/stonyx-sockets/blob/dev/docs/encryption.md#security-notes)) |
 | `heartBeatInterval` | `SOCKET_HEARTBEAT_INTERVAL` | `30000` | Heartbeat interval in ms |
 | `handlerDir` | `SOCKET_HANDLER_DIR` | `'./socket-handlers'` | Handler directory path |
 | `encryption` | `SOCKET_ENCRYPTION` | `'true'` | Enable AES-256-GCM encryption |
+| `authData` | — | `{}` | Extra fields sent with `authKey` in the auth request |
+| `reconnectBaseDelay` | `SOCKET_RECONNECT_BASE_DELAY` | `1000` | First reconnect delay in ms (doubles per attempt) |
+| `reconnectMaxDelay` | `SOCKET_RECONNECT_MAX_DELAY` | `60000` | Reconnect delay cap in ms |
+| `maxReconnectAttempts` | `SOCKET_MAX_RECONNECT_ATTEMPTS` | `Infinity` | Attempts before `onReconnectFailed` |
 
 ## API Reference
 
@@ -220,7 +247,9 @@ Configuration is read from `stonyx/config` under `sockets`:
 | `new SocketServer()` | Singleton constructor |
 | `async init()` | Discover handlers, validate auth, start WebSocket server |
 | `sendTo(clientId, request, data)` | Send to one client by ID |
+| `sendToByMeta(key, value, request, data)` | Send to the first authenticated client whose `meta[key] === value`; returns `true`/`false` |
 | `broadcast(request, data)` | Send to all authenticated clients |
+| `onClientDisconnect` | Optional `(client, code, reason)` callback |
 | `clientMap` | `Map<id, client>` of connected clients |
 | `close()` | Terminate all connections and stop the server |
 | `reset()` | Close + clear all state (for testing) |
@@ -233,7 +262,8 @@ Configuration is read from `stonyx/config` under `sockets`:
 | `async init()` | Discover handlers, connect, authenticate |
 | `send(payload)` | Send a message to the server |
 | `close()` | Forcefully tear down the socket (remove listeners, terminate, null) |
-| `reconnect()` | Reconnect (max 5 retries) |
+| `reconnect()` | Reconnect with exponential backoff, up to `maxReconnectAttempts` (unlimited by default) |
+| `onDisconnect`, `onReconnecting`, `onReconnected`, `onReconnectFailed` | Optional lifecycle callbacks |
 | `reset()` | Close + clear all state (for testing) |
 
 ### Handler

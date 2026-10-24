@@ -2,6 +2,8 @@ import QUnit from 'qunit';
 import SocketServer from '../../src/server.js';
 import SocketClient from '../../src/client.js';
 import { setupIntegrationTests } from 'stonyx/test-helpers';
+import config from 'stonyx/config';
+import AuthHandler from '../sample/socket-handlers/auth.js';
 
 const { module, test } = QUnit;
 
@@ -48,6 +50,35 @@ module('[Integration] Sockets', function (hooks) {
 
     await new Promise(resolve => setTimeout(resolve, 100));
     assert.ok(true, 'Authenticated echo request did not cause disconnect');
+  });
+
+  test('Sample auth handler accepts only the configured authKey', function (assert) {
+    const { authKey } = (config as { sockets: { authKey: string } }).sockets;
+    const clientMap = new Map<number, unknown>();
+    const handler = new AuthHandler();
+    const server = handler.server as (this: unknown, data: unknown, client: unknown) => unknown;
+    const attempt = (data: unknown, id: number) => {
+      let closed = false;
+      const result = server.call({ _serverRef: { clientMap } }, data, { id, close() { closed = true; } });
+      return { result, closed, registered: clientMap.has(id) };
+    };
+
+    const rejected = [
+      { authKey: `${authKey}x` },
+      { authKey: authKey.slice(0, -1) },
+      { authKey: authKey.toLowerCase() === authKey ? authKey.toUpperCase() : authKey.toLowerCase() },
+      { authKey: undefined },
+      { authKey: {} },
+      {},
+      undefined,
+    ];
+    rejected.forEach((data, i) => {
+      const r = attempt(data, 100 + i);
+      assert.true(r.closed && !r.registered && r.result === undefined, `rejects ${JSON.stringify(data)}`);
+    });
+
+    const ok = attempt({ authKey }, 1);
+    assert.deepEqual(ok, { result: 'success', closed: false, registered: true }, 'accepts the configured key');
   });
 
   test('Server throws when auth handler is missing', async function (assert) {

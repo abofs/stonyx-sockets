@@ -7,7 +7,7 @@ The package provides `config/environment.js` with defaults. Stonyx merges this i
 1. Stonyx reads `config/environment.js` (the raw export)
 2. Wraps it under the `sockets` key (derived from package name `@stonyx/sockets` → `sockets`)
 3. Merges any user overrides from the consumer app's environment config
-4. In test mode, merges `test/config/environment.js` on top
+4. In test mode, merges `test/config/environment.ts` on top
 
 Access in code: `import config from 'stonyx/config'` → `config.sockets.port`, etc.
 
@@ -22,6 +22,10 @@ Access in code: `import config from 'stonyx/config'` → `config.sockets.port`, 
 | `handlerDir` | `SOCKET_HANDLER_DIR` | `'./socket-handlers'` | String | Path to handler files directory |
 | `log` | `SOCKET_LOG` | `false` | Boolean | Enable verbose logging (unused currently) |
 | `encryption` | `SOCKET_ENCRYPTION` | `'true'` | String | `'true'` or `'false'` — enables AES-256-GCM |
+| `authData` | — | `{}` | Object | Extra fields the client sends alongside `authKey` in the auth request |
+| `reconnectBaseDelay` | `SOCKET_RECONNECT_BASE_DELAY` | `1000` | Number | First reconnect delay in ms; doubles per attempt |
+| `reconnectMaxDelay` | `SOCKET_RECONNECT_MAX_DELAY` | `60000` | Number | Cap on the reconnect delay in ms (before jitter) |
+| `maxReconnectAttempts` | `SOCKET_MAX_RECONNECT_ATTEMPTS` | `Infinity` | Number | Reconnect attempts before `onReconnectFailed` fires |
 
 ### Logging config (framework-internal)
 
@@ -79,14 +83,18 @@ Only the keys you specify are overridden — the rest keep their defaults via St
 ## Test Config Override
 
 ```javascript
-// test/config/environment.js
-export default {
+// test/config/environment.ts
+const config = {
   sockets: {
-    handlerDir: './test/sample/socket-handlers',
+    handlerDir: './dist-test/test/sample/socket-handlers',
     heartBeatInterval: 60000,
     encryption: 'false',
+    maxReconnectAttempts: 0,
+    reconnectBaseDelay: 100,
   }
-}
+};
+
+export default config;
 ```
 
 Note: Test overrides use the namespaced key (`sockets: { ... }`) because they're merged after Stonyx has already namespaced the config.

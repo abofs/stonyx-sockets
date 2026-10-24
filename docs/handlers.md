@@ -6,14 +6,17 @@ Handlers are the primary extension point for consumers. Each handler is a class 
 
 ## Base Class
 
-```javascript
-// src/handler.js
+```typescript
+// src/handler.ts
 export default class Handler {
   static skipAuth = false;
+
+  declare server?: (data: unknown, client: unknown) => unknown | Promise<unknown>;
+  declare client?: (response: unknown) => void;
 }
 ```
 
-That's it — 3 lines. The base class exists to provide the `skipAuth` default and a common prototype for `instanceof` checks.
+The base class provides the `skipAuth` default and a common prototype for `instanceof` checks. `server` and `client` are declared as optional function-valued properties, not methods.
 
 ## Defining a Handler
 
@@ -71,14 +74,24 @@ export default class EchoHandler extends Handler {
 The `auth` handler is special — `SocketServer.init()` throws if it doesn't find a handler named `auth` with a `server()` method.
 
 ```javascript
+import { timingSafeEqual } from 'node:crypto';
 import { Handler } from '@stonyx/sockets';
 import config from 'stonyx/config';
+
+// Constant-time compare; timingSafeEqual throws on unequal lengths, so check length first.
+function authKeyMatches(given) {
+  const { authKey } = config.sockets;
+  if (typeof authKey !== 'string' || authKey === '' || typeof given !== 'string') return false;
+
+  const a = Buffer.from(given), b = Buffer.from(authKey);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export default class AuthHandler extends Handler {
   static skipAuth = true;  // MUST be true — auth runs before authentication
 
   server(data, client) {
-    if (data.authKey !== config.sockets.authKey) return client.close();
+    if (!authKeyMatches(data?.authKey)) return client.close();
 
     // Register client in the server's client map
     this._serverRef.clientMap.set(client.id, client);
@@ -95,7 +108,7 @@ export default class AuthHandler extends Handler {
 
   client(response) {
     // this.client = the SocketClient instance
-    if (response !== 'success') this.client.promise.reject(response);
+    if (response !== 'success') return this.client.promise.reject(response);
     this.client.promise.resolve();
   }
 }

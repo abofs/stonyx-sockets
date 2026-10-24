@@ -26,20 +26,20 @@ The package declares `stonyx-async` + `stonyx-module` keywords. When Stonyx star
 
 1. Reads `config/environment.js` and merges into `config.sockets`
 2. Registers `log.socket()` via `logColor: 'white'` + `logMethod: 'socket'`
-3. Imports `src/main.js`, instantiates the default `Sockets` class, calls `.init()`
+3. Imports the package entry (`dist/main.js`, built from `src/main.ts`), instantiates the default `Sockets` class, calls `.init()`
 
 The `Sockets` default export is a thin entry point — it does NOT auto-start the WebSocket server. The actual server/client initialization is deferred to when the consumer explicitly creates `new SocketServer()` or `new SocketClient()` and calls `.init()`.
 
 ### Standalone Mode (Testing)
 
-When running `stonyx test` from within the package directory, Stonyx detects the `stonyx-` prefix in the path and transforms the config:
+The suite runs through `test/setup.ts` (see `package.json` `scripts.test`), which calls `new Stonyx(config, cwd)` with this package's `config/environment.js`. Stonyx reads the module name from `package.json#name` (`@stonyx/sockets` becomes `sockets`) and transforms the config:
 
 ```javascript
 // config/environment.js exports { port, address, authKey, ... }
 // Stonyx wraps it as: { sockets: { port, address, authKey, ... } }
 ```
 
-Test overrides from `test/config/environment.js` are merged on top.
+Test overrides from `test/config/environment.ts` are merged on top.
 
 ## Singleton Pattern
 
