@@ -9,4 +9,5 @@
 - [Encryption](encryption.md) -- AES-256-GCM encryption, key derivation, handshake flow, session keys
 - [Configuration](configuration.md) -- All config options, env vars, defaults, how config loads via Stonyx
 - [API Reference](api-reference.md) -- Complete method/property reference for SocketServer, SocketClient, Handler
+- [Testing](testing.md) -- Test structure, running tests, writing new tests
 - [Release](release.md) -- Release process
