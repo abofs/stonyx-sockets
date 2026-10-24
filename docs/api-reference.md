@@ -3,7 +3,7 @@
 ## Exports
 
 ```javascript
-// Main entry (src/main.js)
+// Main entry (src/main.ts)
 import { SocketServer, SocketClient, Handler } from '@stonyx/sockets';
 
 // Sub-path exports
@@ -18,7 +18,7 @@ The default export from `@stonyx/sockets` is the `Sockets` class (used by Stonyx
 
 ## SocketServer
 
-**File:** `src/server.js`
+**File:** `src/server.ts`
 
 ### Properties
 
@@ -102,7 +102,7 @@ Removes client from `clientMap`, logs disconnection.
 
 ## SocketClient
 
-**File:** `src/client.js`
+**File:** `src/client.ts`
 
 ### Properties
 
@@ -186,7 +186,7 @@ Logs disconnection, clears heartbeat timer.
 
 ## Handler
 
-**File:** `src/handler.js`
+**File:** `src/handler.ts`
 
 ### Static Properties
 
@@ -237,7 +237,7 @@ The raw WebSocket client is augmented by the framework:
 
 ## Encryption Functions
 
-**File:** `src/encryption.js`
+**File:** `src/encryption.ts`
 
 | Function | Signature | Description |
 |----------|-----------|-------------|

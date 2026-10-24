@@ -46,7 +46,7 @@ Encrypted messages are sent as binary buffers:
 | Auth response (server → client) | Global key | Global key |
 | All other messages | Session key | Session key |
 
-## Functions (src/encryption.js)
+## Functions (src/encryption.ts)
 
 ### `encrypt(data, key) → Buffer`
 
@@ -66,14 +66,14 @@ Derives a 32-byte key from a string using `scryptSync`.
 
 ## Integration Points
 
-### Server (src/server.js)
+### Server (src/server.ts)
 
 - `init()`: If encryption enabled, derives `this.globalKey` from `config.sockets.authKey`
 - `prepareSend(client)`: Wraps `client.send()` to encrypt with the client's session key (or a key override for auth)
 - `onMessage()`: Decrypts with session key (or global key for unauthenticated clients)
 - Auth response: Generates `client.__sessionKey`, includes base64-encoded key in the response, encrypts with global key
 
-### Client (src/client.js)
+### Client (src/client.ts)
 
 - `init()`: If encryption enabled, derives `this.globalKey` from `config.sockets.authKey`
 - `send()`: Encrypts with session key (or global key if `useGlobalKey=true` for auth)
@@ -88,3 +88,17 @@ Set `SOCKET_ENCRYPTION=false` in the environment. When disabled:
 - No key derivation occurs
 - No session keys are generated
 - The `authKey` is still sent in the auth request (as plaintext JSON)
+
+## Security Notes
+
+- **`authKey` default.** `config/environment.js` falls back to the literal `'AUTH_KEY'` when `SOCKET_AUTH_KEY` is unset. Nothing checks for that value or for a weak key at runtime; production deployments must set their own.
+- **Fixed salt.** `deriveKey` uses the fixed salt `'stonyx-sockets'`, so every deployment with the same `authKey` derives the same global key. The salt is not secret; it only separates this key from other uses of the same string.
+- **Encryption switch.** Only `encryption === 'true'` or `encryption === true` turns encryption on. Any other value, including `'yes'` or `1`, runs in plaintext without a warning. An `undefined` value makes `init()` throw on both server and client rather than fall back to plaintext.
+- **No transport security.** Encryption is at the application layer over `ws`. Use a `wss://` address and a TLS terminator in front of the server if you need transport security.
+- **Session lifetime.** `client.__authenticated` is set once, when the `auth` handler returns a truthy value, and lasts for the life of the connection. There is no expiry, re-authentication or session-key rotation; the heartbeat is a keep-alive only.
+- **Auth gate.** The handler named `auth` is always dispatched, whatever its `skipAuth`. Other handlers run for an unauthenticated client only when they declare `static skipAuth = true`. A request from an unauthenticated client to any other existing handler closes the connection; an unauthenticated `heartBeat` gets no reply.
+- **Malformed input.** On the server, a payload that fails to decrypt or parse closes the connection; a single corrupted byte ends the session, and there is no protocol-level retry. A well-formed request naming an unknown handler is logged and ignored, and the connection stays open.
+- **Sending.** `prepareSend()` replaces `send` on the connection object itself at connect time, so `client.send()` from handlers is encrypted when encryption is on. Code that writes to the socket through any other path is not.
+- **Client metadata.** `client.meta` is whatever the consumer's `auth` handler sets; the framework does not validate it. `sendToByMeta(key, value, request, response)` sends to the first authenticated client whose `meta[key] === value` and returns `true`, or returns `false` if none matches.
+- **Client registry.** `clientMap` is filled by the consumer's `auth` handler, not by the framework. A client the handler does not add is authenticated but unreachable through `sendTo`, `sendToByMeta` and `broadcast`.
+- **Client IP.** `client.ip` is `request.socket.remoteAddress`, recorded on connect and used only in log lines. Behind a proxy it is the proxy's address.

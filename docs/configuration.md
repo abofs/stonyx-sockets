@@ -7,7 +7,7 @@ The package provides `config/environment.js` with defaults. Stonyx merges this i
 1. Stonyx reads `config/environment.js` (the raw export)
 2. Wraps it under the `sockets` key (derived from package name `@stonyx/sockets` → `sockets`)
 3. Merges any user overrides from the consumer app's environment config
-4. In test mode, merges `test/config/environment.js` on top
+4. In test mode, merges `test/config/environment.ts` on top
 
 Access in code: `import config from 'stonyx/config'` → `config.sockets.port`, etc.
 
@@ -79,14 +79,16 @@ Only the keys you specify are overridden — the rest keep their defaults via St
 ## Test Config Override
 
 ```javascript
-// test/config/environment.js
-export default {
+// test/config/environment.ts
+const config = {
   sockets: {
-    handlerDir: './test/sample/socket-handlers',
+    handlerDir: './dist-test/test/sample/socket-handlers',
     heartBeatInterval: 60000,
     encryption: 'false',
+    maxReconnectAttempts: 0,
+    reconnectBaseDelay: 100,
   }
-}
+};
 ```
 
 Note: Test overrides use the namespaced key (`sockets: { ... }`) because they're merged after Stonyx has already namespaced the config.

@@ -7,7 +7,7 @@ Handlers are the primary extension point for consumers. Each handler is a class 
 ## Base Class
 
 ```javascript
-// src/handler.js
+// src/handler.ts
 export default class Handler {
   static skipAuth = false;
 }
